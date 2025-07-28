@@ -3,7 +3,7 @@
 #SBATCH --partition mit_normal
 #SBATCH --cpus-per-task 2
 #SBATCH --output /orcd/data/dandi/001/backup_logs/myjob.log-%A-%a
-#SBATCH --array 0-4096
+#SBATCH --array 0-256
 
 module load miniforge
 
