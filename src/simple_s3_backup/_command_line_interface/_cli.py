@@ -5,7 +5,7 @@ from .._base import backup_dandi_nonblobs, backup_dandi_blobs
 
 # backup
 @click.group(name="backup")
-def _main()
+def _main():
     pass
 
 # backup dandi

@@ -2,7 +2,7 @@
 
 #SBATCH -p mit_normal
 #SBATCH -o /orcd/data/dandi/001/backup_logs/myjob.log-%A-%a
-#SBATCH -a 0-3
+#SBATCH -a 1000-1003
 
 # TODO: adjust range to 4096
 
@@ -10,4 +10,4 @@
 module load miniforge
 source /orcd/data/dandi/001/s3-backup-environment/bin/activate
 
-simples3backup $SLURM_ARRAY_TASK_ID
+backup dandi blobs $SLURM_ARRAY_TASK_ID
