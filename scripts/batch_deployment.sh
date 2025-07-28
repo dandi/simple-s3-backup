@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --partition mit_normal
-#SBATCH --cpus-per-task 8
+#SBATCH --cpus-per-task 1
 #SBATCH --output /orcd/data/dandi/001/backup_logs/myjob.log-%A-%a
 #SBATCH --array 0-256
 
