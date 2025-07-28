@@ -19,7 +19,7 @@ def _dandi() -> None:
 
 
 # backup dandi nonblobs
-@_main.command(name="nonblobs")
+@_dandi.command(name="nonblobs")
 def _backup_dandi_nonblobs() -> None:
     """
     Backup all DANDI bucket non-blob directories.
@@ -28,7 +28,7 @@ def _backup_dandi_nonblobs() -> None:
 
 
 # backup dandi blobs <int>
-@_main.command(name="blobs")
+@_dandi.command(name="blobs")
 @click.argument("task_id", type=int)
 def _backup_dandi_blobs(task_id: int) -> None:
     """

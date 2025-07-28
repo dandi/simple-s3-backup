@@ -8,6 +8,7 @@
 # TODO: adjust range to 4096
 
 module load miniforge
-source /orcd/data/dandi/001/s3-backup-environment/bin/activate
+
+conda activate /orcd/data/dandi/001/s3-backup-environment
 
 backup dandi blobs $SLURM_ARRAY_TASK_ID
