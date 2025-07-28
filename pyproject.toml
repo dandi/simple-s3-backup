@@ -1,0 +1,112 @@
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/simple_s3_backup"]
+
+
+
+[project]
+name = "simple-s3-backup"
+version="0.0.1"
+authors = [
+  { name="Cody Baker", email="cody.c.baker.phd@gmail.com" },
+]
+description = "Simple scripts for running backup on MIT cluster."
+readme = "README.md"
+keywords = [
+    "AWS",
+    "S3",
+    "backup",
+]
+license = {file = "LICENSE.txt"}
+requires-python = ">=3.13"
+dependencies = [
+    "click",
+    "s5cmd",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: BSD License",
+    "Intended Audience :: Developers",
+    "Operating System :: Unix",
+    "License :: OSI Approved :: MIT License",
+]
+
+[project.urls]
+Homepage = "https://github.com/dandi/simple-s3-backup"
+Documentation = "https://github.com/dandi/simple-s3-backup/blob/master/README.md"
+Repository = "https://github.com/dandi/simple-s3-backup/"
+Issues = "https://github.com/dandi/simple-s3-backup/issues"
+Changelog = "https://github.com/dandi/simple-s3-backup/blob/master/CHANGELOG.md"
+
+[project.scripts]
+backup = "simple_s3_backup._command_line_interface._cli:_main"
+
+[dependency-groups]
+test = ["pytest"]
+dev = ["ipython", "pre-commit"]
+all = [
+    {include-group = "test"},
+    {include-group = "dev"}
+]
+
+
+
+[tool.black]
+line-length = 120
+target-version = ['py312']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  \.toml
+  |\.yml
+  |\.txt
+  |\.sh
+  |\.git
+  |\.ini
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+
+
+[tool.ruff]
+exclude = [
+  "*/__init__.py"
+]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["F", "E", "I"]
+ignore = [
+    "PTH123",
+    "D203",
+    "D212",
+    "T201",
+    "FIX002",
+    "TD003",
+    "TD002",
+    "S101",
+    "ICN001",
+    "INP001",
+]
+fixable = ["ALL"]
+
+[tool.ruff.lint.isort]
+relative-imports-order = "closest-to-furthest"
+known-first-party = ["simple_s3_backup"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/simple_s3_backup/_hidden_top_level_imports.py" = ["F401"]  # Must perform imports here even if not exposed
