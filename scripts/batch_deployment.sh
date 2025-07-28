@@ -3,9 +3,7 @@
 #SBATCH --partition mit_normal
 #SBATCH --cpus-per-task 2
 #SBATCH --output /orcd/data/dandi/001/backup_logs/myjob.log-%A-%a
-#SBATCH --array 1000-1003
-
-# TODO: adjust range to 4096
+#SBATCH --array 0-4096
 
 module load miniforge
 
