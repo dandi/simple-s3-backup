@@ -17,6 +17,7 @@ def backup_dandi_nonblobs() -> None:
         source = f"{location}*" if location.endswith("/") else location
         destination = f"{backup_directory}/{location}"
         command = f"s5cmd cp --if-size-differ --if-source-newer s3://dandiarchive/{source} {destination}"
+        print(command)
         _deploy_subprocess(command=command)
 
 
