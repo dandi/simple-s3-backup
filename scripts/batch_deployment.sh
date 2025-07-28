@@ -1,8 +1,9 @@
 #!/bin/bash
 
-#SBATCH -p mit_normal
-#SBATCH -o /orcd/data/dandi/001/backup_logs/myjob.log-%A-%a
-#SBATCH -a 0-3
+#SBATCH --partition mit_normal
+#SBATCH --cpus-per-task 2
+#SBATCH --output /orcd/data/dandi/001/backup_logs/myjob.log-%A-%a
+#SBATCH --array 0-3
 
 # TODO: adjust range to 4096
 
