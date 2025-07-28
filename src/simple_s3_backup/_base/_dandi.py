@@ -1,11 +1,9 @@
-import os
 import pathlib
 import subprocess
 
 
 def backup_dandi_nonblobs() -> None:
-    _check_environment_variable()
-    backup_directory = pathlib.Path(os.environ["BACKUP_DIRECTORY"])
+    backup_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive.cody")
 
     ls_command = "s5cmd ls s3://dandiarchive"
     ls_output = _deploy_subprocess(command=ls_command, ignore_errors=True)
@@ -21,20 +19,13 @@ def backup_dandi_nonblobs() -> None:
 
 
 def backup_dandi_blobs(task_id: int) -> None:
-    _check_environment_variable()
-    backup_directory = pathlib.Path(os.environ["BACKUP_DIRECTORY"])
+    backup_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive.cody")
 
     blob_subdirectory = f"{task_id:03x}"
     source = f"s3://dandiarchive/blobs/{blob_subdirectory}/*"
     destination = f"{backup_directory}/{blob_subdirectory}/"
     command = f"s5cmd cp --if-size-differ --if-source-newer {source} {destination}"
     _deploy_subprocess(command=command)
-
-
-def _check_environment_variable() -> None:
-    if os.environ.get("BACKUP_DIRECTORY", None) is None:
-        message = "The BACKUP_DIRECTORY environment variable is not set."
-        raise EnvironmentError(message)
 
 
 def _deploy_subprocess(
