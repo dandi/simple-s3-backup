@@ -10,4 +10,4 @@
 module load miniforge
 source /orcd/data/dandi/001/s3-backup-environment/bin/activate
 
-simples3backup $SLURM_ARRAY_TASK_ID
+backup dandi blobs $SLURM_ARRAY_TASK_ID
