@@ -7,8 +7,10 @@ def backup_dandi_nonblobs() -> None:
 
     ls_command = "s5cmd ls s3://dandiarchive"
     ls_output = _deploy_subprocess(command=ls_command, ignore_errors=True)
+
+    skip_keys = ("blobs", "zarr", "dandiarchive")
     ls_locations = [
-        line.split(" ")[-1] for line in ls_output.splitlines() if "zarr" not in line and "dandiarchive" not in line
+        line.split(" ")[-1] for line in ls_output.splitlines() if not any(skip_key in line for skip_key in skip_keys)
     ]
 
     for location in ls_locations:
