@@ -5,6 +5,7 @@
 #SBATCH --output /orcd/data/dandi/001/backup_logs/myjob.log-%A-%a
 #SBATCH --array 0-256
 
+source /etc/profile.d/modules.sh
 module load miniforge
 
 conda activate /orcd/data/dandi/001/s3-backup-environment
