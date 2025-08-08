@@ -1,6 +1,6 @@
 import click
 
-from .._base import backup_dandi_blobs, backup_dandi_nonblobs
+from .._base import backup_dandi_blobs, backup_dandi_nonblobs, display_current_status
 
 
 # backup
@@ -35,3 +35,12 @@ def _backup_dandi_blobs(task_id: int) -> None:
     Backup DANDI blob directories correspond to the `task_id`.
     """
     backup_dandi_blobs(task_id=task_id)
+
+
+# backup dandi display
+@_dandi.command(name="display")
+def _backup_dandi_blobs(task_id: int) -> None:
+    """
+    Pretty rendering for summary of current backup status.
+    """
+    display_current_status()
