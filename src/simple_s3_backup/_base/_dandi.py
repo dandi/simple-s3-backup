@@ -46,7 +46,7 @@ def display_current_status(use_cache: bool = True) -> None:
         outer_directory_to_local_size = dict()
         outer_directory_to_local_object_count = dict()
         for location in outer_ls_locations:
-            local_path = backup_directory / location
+            local_path = backup_directory / location.removesuffix("/")
             local_size_in_bytes, local_object_count = _get_local_size_in_bytes_and_object_count(path=local_path)
 
             outer_directory_to_local_size[location] = remote_size_in_bytes
