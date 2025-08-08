@@ -1,5 +1,6 @@
 import collections
 import datetime
+import math
 import pathlib
 import subprocess
 
@@ -72,18 +73,19 @@ def display_current_status(use_cache: bool = True) -> None:
         outer_ls_locations = list(outer_directory_to_remote_size.keys())
 
     print(f"\n\nCurrent status of S3 bucket backup of 'dandiarchive' as of {today}\n")
-    print(f"{'Location':<20} {'Size (Bytes)':<30} {'Number of Objects':<30}")
+    print(f"{'Location':<20} {'Size':<30} {'Number of Objects':<30}")
     print(f"{"":<20} {'Local / Remote (%)':<30} {"Local / Remote (%)":<30}")
     print("=" * 80)
     for location in outer_ls_locations:
-        remote_size = outer_directory_to_remote_size[location]
         local_size = outer_directory_to_local_size[location]
+        remote_size = outer_directory_to_remote_size[location]
 
-        remote_object_count = outer_directory_to_remote_object_count[location]
         local_object_count = outer_directory_to_local_object_count[location]
+        remote_object_count = outer_directory_to_remote_object_count[location]
 
-        size_ratio = _format_ratio(numerator=local_size, denominator=remote_object_count)
-        size_string = f"{local_size} / {remote_size} ({size_ratio})"
+        human_sizes = [_human_readable_size(size_in_bytes=size) for size in (local_size, remote_size)]
+        size_ratio = _format_ratio(numerator=local_size, denominator=remote_size)
+        size_string = f"{human_sizes[0]} / {human_sizes[1]} ({size_ratio})"
 
         object_count_ratio = _format_ratio(numerator=local_object_count, denominator=remote_object_count)
         object_count_string = f"{local_object_count} / {remote_object_count} ({object_count_ratio})"
@@ -174,3 +176,53 @@ def _format_ratio(numerator: int, denominator: int) -> str:
     if ratio == "100%" and numerator != denominator:
         ratio = "99.99%"
     return ratio
+
+
+def _human_readable_size(size_in_bytes: int, binary: bool = False) -> str:
+    """
+    Convert a file size given in bytes to a human-readable format using division
+    and remainder instead of iteration.
+
+    Parameters
+    ----------
+    size_in_bytes : int
+        The size in bytes.
+    binary : bool, default=False
+        If True, use binary prefixes (KiB, MiB, etc.). If False, use SI prefixes (KB, MB, etc.).
+
+    Returns
+    -------
+    str
+        A human-readable string representation of the size.
+
+    Examples
+    --------
+    >>> human_readable_size(123)
+    '123 B'
+    >>> human_readable_size(1234, binary=True)
+    '1.21 KiB'
+    >>> human_readable_size(123456789)
+    '123.46 MB'
+    """
+    # Check if size is negative
+    if size_in_bytes < 0:
+        raise ValueError("Size must be non-negative")
+
+    if size_in_bytes == 0:
+        return "0 B"
+
+    # Define the suffixes for each size unit
+    suffixes = ["", "K", "M", "G", "T", "P", "E", "Z", "Y"]
+
+    # Calculate base and the exponent
+    base = 1024 if binary else 1000
+    exponent = int(math.log(size_in_bytes, base))
+
+    if exponent == 0:
+        return f"{size_in_bytes} B"
+
+    # Calculate the human-readable size
+    human_readable_value = size_in_bytes / (base**exponent)
+
+    # Return formatted size with suffix
+    return f"{human_readable_value:.2f} {suffixes[exponent]}{'i' if binary else ''}B"
