@@ -72,8 +72,8 @@ def display_current_status(use_cache: bool = True) -> None:
         outer_ls_locations = list(outer_directory_to_remote_size.keys())
 
     print(f"\n\nCurrent status of S3 bucket backup of 'dandiarchive' as of {today}:")
-    header = f"{'Location':<20} {'Size (Bytes)':<30} {'Number of Objects':<30}"
-    print(header)
+    print(f"{'Location':<20} {'Size (Bytes)':<30} {'Number of Objects':<30}")
+    print(f"{"":<20} {'Local / Remote':<30} {"Local / Remote":<30}")
     print("=" * 80)
     for location in outer_ls_locations:
         remote_size = outer_directory_to_remote_size[location]
@@ -159,5 +159,5 @@ def _get_local_size_in_bytes_and_object_count(path: pathlib.Path) -> tuple[int, 
         return path.stat().st_size, 1
 
     if path.is_dir():
-        sizes = list(subpath.stat().st_size for subpath in path.rglob(pattern="*") if subpath.is_file())
+        sizes = list(subpath.stat().st_size for subpath in path.rglob(pattern="*/**") if subpath.is_file())
         return sum(sizes), len(sizes)
