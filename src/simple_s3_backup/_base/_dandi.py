@@ -35,7 +35,7 @@ def display_current_status(use_cache: bool = True) -> None:
         for location in outer_ls_locations:
             du_command = f"s5cmd du s3://dandiarchive/{location}"
             du_output = _deploy_subprocess(command=du_command)
-            du_output_split = du_output.splitlines()
+            du_output_split = du_output.split(" ")
 
             remote_size_in_bytes = int(du_output_split[0])
             object_count = int(du_output_split[3])
