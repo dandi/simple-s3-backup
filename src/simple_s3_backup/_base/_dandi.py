@@ -82,11 +82,11 @@ def display_current_status(use_cache: bool = True) -> None:
         remote_object_count = outer_directory_to_remote_object_count[location]
         local_object_count = outer_directory_to_local_object_count[location]
 
-        size_ratio = f"{local_size/remote_size:.2%}"
-        size_string = f"{local_size} / {remote_size} ({size_ratio}%)"
+        size_ratio = _format_ratio(numerator=local_size, denominator=remote_object_count)
+        size_string = f"{local_size} / {remote_size} ({size_ratio})"
 
-        object_count_ratio = f"{remote_object_count/local_object_count:.2%}"
-        object_count_string = f"{local_object_count} / {remote_object_count} ({object_count_ratio}%)"
+        object_count_ratio = _format_ratio(numerator=local_object_count, denominator=remote_object_count)
+        object_count_string = f"{local_object_count} / {remote_object_count} ({object_count_ratio})"
 
         print(f"{location:<20} {size_string:<31} {object_count_string:<31}")
     print("\n")
@@ -167,3 +167,10 @@ def _get_local_size_in_bytes_and_object_count(path: pathlib.Path) -> tuple[int, 
     if path.is_dir():
         sizes = [subpath.stat().st_size for subpath in path.rglob(pattern="*") if subpath.is_file()]
         return sum(sizes), len(sizes)
+
+
+def _format_ratio(numerator: int, denominator: int) -> str:
+    ratio = f"{numerator / denominator:.2%}"
+    if ratio == "100%" and numerator != denominator:
+        ratio = "99.99%"
+    return ratio
