@@ -2,7 +2,7 @@
 
 #SBATCH --partition mit_normal
 #SBATCH --cpus-per-task 1
-#SBATCH --output /orcd/data/dandi/001/backup_logs/clean_logs_directory.log-%A-%x
+#SBATCH --output /orcd/data/dandi/001/backup_logs/clean_logs_directory.log-%A
 
 find /orcd/data/dandi/001/backup_logs/ -type f -name "*.log-*" -mtime +3 -exec rm {} \;
 

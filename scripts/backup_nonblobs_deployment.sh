@@ -2,7 +2,7 @@
 
 #SBATCH --partition mit_normal
 #SBATCH --cpus-per-task 1
-#SBATCH --output /orcd/data/dandi/001/backup_logs/backup_nonblobs.log-%A-%x
+#SBATCH --output /orcd/data/dandi/001/backup_logs/backup_nonblobs.log-%A
 
 module load miniforge
 
