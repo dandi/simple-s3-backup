@@ -152,6 +152,7 @@ def _deploy_subprocess(
 
 
 def _get_local_size_in_bytes_and_object_count(path: pathlib.Path) -> tuple[int, int]:
+    print(path)
     if not path.exists():
         return 0, 0
 
@@ -160,4 +161,5 @@ def _get_local_size_in_bytes_and_object_count(path: pathlib.Path) -> tuple[int, 
 
     if path.is_dir():
         sizes = [subpath.stat().st_size for subpath in path.rglob(pattern="*") if subpath.is_file()]
+        print(sizes)
         return sum(sizes), len(sizes)
