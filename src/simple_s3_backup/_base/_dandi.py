@@ -12,7 +12,6 @@ def display_current_status(use_cache: bool = True) -> None:
     outer_ls_command = "s5cmd ls s3://dandiarchive"
     outer_ls_output = _deploy_subprocess(command=outer_ls_command)
 
-    # For each of these outer directories, recurse their contents and make a mirror of
     today = datetime.date.today().isoformat()
     filename = f"{today}.yaml"
     cache_directory = backup_directory.parent / "display_cache"
@@ -68,7 +67,6 @@ def display_current_status(use_cache: bool = True) -> None:
         outer_directory_to_local_size = cache_data["outer_directory_to_local_size"]
         outer_directory_to_local_object_count = cache_data["outer_directory_to_local_object_count"]
 
-    # nicely print this to console by iterating over the outer directories (display rather like du)
     print(f"\n\nCurrent status of S3 bucket backup of 'dandiarchive' as of {today}:")
     header = f"{'Location':<20} {'Size (Bytes)':<31} {'Number of Objects':<31}"
     print(header)
