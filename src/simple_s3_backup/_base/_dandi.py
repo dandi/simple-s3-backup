@@ -169,8 +169,7 @@ def _get_local_size_in_bytes_and_object_count(path: pathlib.Path) -> tuple[int, 
 
     if path.is_dir():
         sizes = [subpath.stat().st_size for subpath in path.rglob(pattern="*") if subpath.is_file()]
-        count_correction = len([path for subpath in path.rglob(pattern="*") if not subpath.is_file()])
-        return sum(sizes), len(sizes) + count_correction
+        return sum(sizes), len(sizes)
 
 
 def _format_ratio(numerator: int, denominator: int) -> str:
