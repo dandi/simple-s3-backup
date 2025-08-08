@@ -69,17 +69,18 @@ def display_current_status(use_cache: bool = True) -> None:
         outer_directory_to_local_object_count = cache_data["outer_directory_to_local_object_count"]
 
     # nicely print this to console by iterating over the outer directories (display rather like du)
-    print(f"Current status of S3 bucket backup of 'dandiarchive' as of {today}:")
-    print(f"{'Location':<50} {'Remote Size':<15} {'Local Size':<15} {'Number of Objects':<20}")
-    print("=" * 100)
+    print(f"\n\nCurrent status of S3 bucket backup of 'dandiarchive' as of {today}:")
+    header = f"{'Location':<20} {'Size (Bytes)':<31} {'Number of Objects':<31}"
+    print(header)
+    print("=" * len(header))
     for location in outer_ls_locations:
         remote_size = outer_directory_to_remote_size[location]
         remote_object_count = outer_directory_to_remote_object_count[location]
         local_size = outer_directory_to_local_size[location]
         local_object_count = outer_directory_to_local_object_count[location]
 
-        print(f"{location:<50} {remote_size:<15} {remote_object_count:<15} {local_size:<15} {local_object_count:<20}")
-    pass
+        print(f"{location:<20} {remote_size:<15}/{local_size:<15} {remote_object_count:<15}/{local_object_count:<20}")
+    print("\n\n")
 
 
 def backup_dandi_nonblobs() -> None:
