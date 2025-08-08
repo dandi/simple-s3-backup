@@ -82,8 +82,12 @@ def display_current_status(use_cache: bool = True) -> None:
         remote_object_count = outer_directory_to_remote_object_count[location]
         local_object_count = outer_directory_to_local_object_count[location]
 
-        size_string = f"{local_size} / {remote_size} ({local_size/remote_size})"
-        object_count_string = f"{local_object_count} / {remote_object_count} ({local_object_count/remote_object_count})"
+        size_ratio = f"{local_size/remote_size:.2%}"
+        size_string = f"{local_size} / {remote_size} ({size_ratio}%)"
+
+        object_count_ratio = f"{remote_object_count/local_object_count:.2%}"
+        object_count_string = f"{local_object_count} / {remote_object_count} ({object_count_ratio}%)"
+
         print(f"{location:<20} {size_string:<31} {object_count_string:<31}")
     print("\n")
     print("Note: reported percentage may exceed 100% due to delayed garbage collection.")
