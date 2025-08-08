@@ -39,7 +39,7 @@ def _backup_dandi_blobs(task_id: int) -> None:
 
 # backup dandi display
 @_dandi.command(name="display")
-def _backup_dandi_blobs(task_id: int) -> None:
+def _backup_dandi_blobs() -> None:
     """
     Pretty rendering for summary of current backup status.
     """
