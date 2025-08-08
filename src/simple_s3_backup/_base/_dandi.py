@@ -2,8 +2,12 @@ import pathlib
 import subprocess
 
 
+def display_current_status() -> None:
+    pass
+
+
 def backup_dandi_nonblobs() -> None:
-    backup_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive.cody")
+    backup_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive")
 
     ls_command = "s5cmd ls s3://dandiarchive"
     ls_output = _deploy_subprocess(command=ls_command, ignore_errors=True)
@@ -22,7 +26,7 @@ def backup_dandi_nonblobs() -> None:
 
 
 def backup_dandi_blobs(task_id: int) -> None:
-    blobs_backup_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive.cody/blobs")
+    blobs_backup_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive/blobs")
 
     top_blob_hexcode = f"{task_id:02x}"
     for sub_blob_hexcode in range(16):
