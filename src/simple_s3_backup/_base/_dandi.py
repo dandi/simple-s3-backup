@@ -24,7 +24,7 @@ def display_current_status(use_cache: bool = True) -> None:
     daily_cache_file_path = cache_directory / filename
 
     if use_cache is False or not daily_cache_file_path.exists():
-        skip_outer_keys = ("blobs", "zarr", "dandiarchive")
+        skip_outer_keys = ("zarr", "dandiarchive")
         outer_ls_locations = [
             line.split(" ")[-1]
             for line in outer_ls_output.splitlines()
