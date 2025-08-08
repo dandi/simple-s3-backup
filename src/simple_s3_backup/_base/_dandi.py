@@ -33,7 +33,7 @@ def display_current_status(use_cache: bool = True) -> None:
         outer_directory_to_remote_size = dict()
         outer_directory_to_remote_object_count = dict()
         for location in outer_ls_locations:
-            du_command = f"s5cmd du s3://dandiarchive/{location}"
+            du_command = f"s5cmd du s3://dandiarchive/{location}*"
             du_output = _deploy_subprocess(command=du_command)
             print(du_output)
             du_output_split = du_output.split(" ")
@@ -49,9 +49,6 @@ def display_current_status(use_cache: bool = True) -> None:
         for location in outer_ls_locations:
             local_path = backup_directory / location.removesuffix("/")
             local_size_in_bytes, local_object_count = _get_local_size_in_bytes_and_object_count(path=local_path)
-            print(_get_local_size_in_bytes_and_object_count(path=local_path))
-            print(f"{local_size_in_bytes=}")
-            print(f"{local_object_count=}")
 
             outer_directory_to_local_size[location] = local_size_in_bytes
             outer_directory_to_local_object_count[location] = local_object_count
@@ -156,7 +153,6 @@ def _deploy_subprocess(
 
 
 def _get_local_size_in_bytes_and_object_count(path: pathlib.Path) -> tuple[int, int]:
-    print(path)
     if not path.exists():
         return 0, 0
 
@@ -165,5 +161,4 @@ def _get_local_size_in_bytes_and_object_count(path: pathlib.Path) -> tuple[int, 
 
     if path.is_dir():
         sizes = [subpath.stat().st_size for subpath in path.rglob(pattern="*") if subpath.is_file()]
-        print(sizes)
         return sum(sizes), len(sizes)
