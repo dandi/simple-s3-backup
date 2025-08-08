@@ -159,5 +159,5 @@ def _get_local_size_in_bytes_and_object_count(path: pathlib.Path) -> tuple[int, 
         return path.stat().st_size, 1
 
     if path.is_dir():
-        sizes = list(subpath.stat().st_size for subpath in path.rglob(pattern="*/**") if subpath.is_file())
+        sizes = [subpath.stat().st_size for subpath in path.rglob(pattern="*") if subpath.is_file()]
         return sum(sizes), len(sizes)
