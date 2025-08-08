@@ -77,11 +77,14 @@ def display_current_status(use_cache: bool = True) -> None:
     print("=" * len(header))
     for location in outer_ls_locations:
         remote_size = outer_directory_to_remote_size[location]
-        remote_object_count = outer_directory_to_remote_object_count[location]
         local_size = outer_directory_to_local_size[location]
+
+        remote_object_count = outer_directory_to_remote_object_count[location]
         local_object_count = outer_directory_to_local_object_count[location]
 
-        print(f"{location:<20} {remote_size:<15}/{local_size:<15} {remote_object_count:<15}/{local_object_count:<20}")
+        size_string = f"{remote_size}/{local_size}"
+        object_count_string = f"{remote_object_count}/{local_object_count}"
+        print(f"{location:<20} {size_string:<31} {object_count_string:<31}")
     print("\n\n")
 
 
