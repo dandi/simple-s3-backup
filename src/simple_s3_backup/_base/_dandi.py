@@ -35,33 +35,37 @@ def display_current_status(use_cache: bool = True) -> None:
         for location in outer_ls_locations:
             du_command = f"s5cmd du s3://dandiarchive/{location}"
             du_output = _deploy_subprocess(command=du_command)
+            print(du_output)
             du_output_split = du_output.split(" ")
 
             remote_size_in_bytes = int(du_output_split[0])
-            object_count = int(du_output_split[3])
+            remote_object_count = int(du_output_split[3])
 
             outer_directory_to_remote_size[location] = remote_size_in_bytes
-            outer_directory_to_remote_object_count[location] = object_count
+            outer_directory_to_remote_object_count[location] = remote_object_count
 
         outer_directory_to_local_size = dict()
         outer_directory_to_local_object_count = dict()
         for location in outer_ls_locations:
             local_path = backup_directory / location.removesuffix("/")
             local_size_in_bytes, local_object_count = _get_local_size_in_bytes_and_object_count(path=local_path)
+            print(_get_local_size_in_bytes_and_object_count(path=local_path))
+            print(f"{local_size_in_bytes=}")
+            print(f"{local_object_count=}")
 
-            outer_directory_to_local_size[location] = remote_size_in_bytes
+            outer_directory_to_local_size[location] = local_size_in_bytes
             outer_directory_to_local_object_count[location] = local_object_count
 
-        with daily_cache_file_path.open(mode="w", encoding="utf-8") as file_stream:
-            cache_data = {
-                "outer_directory_to_remote_size": outer_directory_to_remote_size,
-                "outer_directory_to_remote_object_count": outer_directory_to_remote_object_count,
-                "outer_directory_to_local_size": outer_directory_to_local_size,
-                "outer_directory_to_local_object_count": outer_directory_to_local_object_count,
-            }
-            file_stream.write(yaml.dump(cache_data, allow_unicode=True, sort_keys=False))
+        cache_data = {
+            "outer_directory_to_remote_size": outer_directory_to_remote_size,
+            "outer_directory_to_remote_object_count": outer_directory_to_remote_object_count,
+            "outer_directory_to_local_size": outer_directory_to_local_size,
+            "outer_directory_to_local_object_count": outer_directory_to_local_object_count,
+        }
+        with daily_cache_file_path.open(mode="w") as file_stream:
+            yaml.dump(data=cache_data, stream=file_stream)
     else:
-        with daily_cache_file_path.open(mode="r", encoding="utf-8") as file_stream:
+        with daily_cache_file_path.open(mode="r") as file_stream:
             cache_data = yaml.safe_load(stream=file_stream)
 
         outer_directory_to_remote_size = cache_data["outer_directory_to_remote_size"]
@@ -71,7 +75,7 @@ def display_current_status(use_cache: bool = True) -> None:
 
         outer_ls_locations = list(outer_directory_to_remote_size.keys())
 
-    print(f"\n\nCurrent status of S3 bucket backup of 'dandiarchive' as of {today}:")
+    print(f"\n\nCurrent status of S3 bucket backup of 'dandiarchive' as of {today}\n")
     print(f"{'Location':<20} {'Size (Bytes)':<30} {'Number of Objects':<30}")
     print(f"{"":<20} {'Local / Remote':<30} {"Local / Remote":<30}")
     print("=" * 80)
