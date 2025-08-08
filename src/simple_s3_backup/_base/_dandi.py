@@ -29,6 +29,7 @@ def display_current_status(use_cache: bool = True) -> None:
             for line in outer_ls_output.splitlines()
             if not any(skip_key in line for skip_key in skip_outer_keys)
         ]
+
         outer_directory_to_remote_size = dict()
         outer_directory_to_remote_object_count = dict()
         for location in outer_ls_locations:
@@ -62,10 +63,13 @@ def display_current_status(use_cache: bool = True) -> None:
     else:
         with daily_cache_file_path.open(mode="r", encoding="utf-8") as file_stream:
             cache_data = yaml.safe_load(stream=file_stream)
+
         outer_directory_to_remote_size = cache_data["outer_directory_to_remote_size"]
         outer_directory_to_remote_object_count = cache_data["outer_directory_to_remote_object_count"]
         outer_directory_to_local_size = cache_data["outer_directory_to_local_size"]
         outer_directory_to_local_object_count = cache_data["outer_directory_to_local_object_count"]
+
+        outer_ls_locations = list(outer_directory_to_remote_size.keys())
 
     print(f"\n\nCurrent status of S3 bucket backup of 'dandiarchive' as of {today}:")
     header = f"{'Location':<20} {'Size (Bytes)':<31} {'Number of Objects':<31}"
