@@ -86,8 +86,8 @@ def display_current_status(use_cache: bool = True) -> None:
         remote_object_count = outer_directory_to_remote_object_count[location]
         local_object_count = outer_directory_to_local_object_count[location]
 
-        size_string = f"{remote_size} / {local_size}"
-        object_count_string = f"{remote_object_count} / {local_object_count}"
+        size_string = f"{local_size} / {remote_size}"
+        object_count_string = f"{local_object_count} / {remote_object_count}"
         print(f"{location:<20} {size_string:<31} {object_count_string:<31}")
     print("\n\n")
 
