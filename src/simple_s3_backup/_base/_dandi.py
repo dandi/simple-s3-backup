@@ -35,7 +35,6 @@ def display_current_status(use_cache: bool = True) -> None:
         for location in outer_ls_locations:
             du_command = f"s5cmd du s3://dandiarchive/{location}*"
             du_output = _deploy_subprocess(command=du_command)
-            print(du_output)
             du_output_split = du_output.split(" ")
 
             remote_size_in_bytes = int(du_output_split[0])
@@ -74,7 +73,7 @@ def display_current_status(use_cache: bool = True) -> None:
 
     print(f"\n\nCurrent status of S3 bucket backup of 'dandiarchive' as of {today}\n")
     print(f"{'Location':<20} {'Size (Bytes)':<30} {'Number of Objects':<30}")
-    print(f"{"":<20} {'Local / Remote':<30} {"Local / Remote":<30}")
+    print(f"{"":<20} {'Local / Remote (%)':<30} {"Local / Remote (%)":<30}")
     print("=" * 80)
     for location in outer_ls_locations:
         remote_size = outer_directory_to_remote_size[location]
@@ -83,10 +82,12 @@ def display_current_status(use_cache: bool = True) -> None:
         remote_object_count = outer_directory_to_remote_object_count[location]
         local_object_count = outer_directory_to_local_object_count[location]
 
-        size_string = f"{local_size} / {remote_size}"
-        object_count_string = f"{local_object_count} / {remote_object_count}"
+        size_string = f"{local_size} / {remote_size} ({local_size/remote_size})"
+        object_count_string = f"{local_object_count} / {remote_object_count} ({local_object_count/remote_object_count})"
         print(f"{location:<20} {size_string:<31} {object_count_string:<31}")
-    print("\n\n")
+    print("\n")
+    print("Note: reported percentage may exceed 100% due to delayed garbage collection.")
+    print("\n")
 
 
 def backup_dandi_nonblobs() -> None:
