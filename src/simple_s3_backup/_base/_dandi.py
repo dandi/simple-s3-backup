@@ -72,10 +72,11 @@ def display_current_status(use_cache: bool = True) -> None:
 
         outer_ls_locations = list(outer_directory_to_remote_size.keys())
 
+    padding = (20, 40, 40)
     print(f"\n\nCurrent status of S3 bucket backup of 'dandiarchive' as of {today}\n")
-    print(f"{'Location':<20} {'Size':<30} {'Number of Objects':<30}")
-    print(f"{"":<20} {'Local / Remote (%)':<30} {"Local / Remote (%)":<30}")
-    print("=" * 80)
+    print(f"{'Location':<{padding[0]}} {'Size':<{padding[1]}} {'Number of Objects':<{padding[2]}}")
+    print(f"{"":<{padding[0]}} {'Local / Remote (%)':<{padding[1]}} {"Local / Remote (%)":<{padding[2]}}")
+    print("=" * sum(padding))
     for location in outer_ls_locations:
         local_size = outer_directory_to_local_size[location]
         remote_size = outer_directory_to_remote_size[location]
@@ -90,7 +91,7 @@ def display_current_status(use_cache: bool = True) -> None:
         object_count_ratio = _format_ratio(numerator=local_object_count, denominator=remote_object_count)
         object_count_string = f"{local_object_count} / {remote_object_count} ({object_count_ratio})"
 
-        print(f"{location:<20} {size_string:<31} {object_count_string:<31}")
+        print(f"{location:<{padding[0]}} {size_string:<{padding[1]}} {object_count_string:<{padding[2]}}")
     print("\n")
     print("Note: reported percentage may exceed 100% due to delayed garbage collection.")
     print("\n")
