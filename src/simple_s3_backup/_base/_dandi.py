@@ -119,14 +119,25 @@ def backup_dandi_nonblobs() -> None:
 def backup_dandi_blobs(task_id: int) -> None:
     blobs_backup_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive/blobs")
 
-    top_blob_hexcode = f"{task_id:02x}"
-    for sub_blob_hexcode in range(16):
-        blob_subdirectory = top_blob_hexcode + f"{sub_blob_hexcode:01x}"
-        source = f"s3://dandiarchive/blobs/{blob_subdirectory}/*"
-        destination = f"{blobs_backup_directory}/{blob_subdirectory}/"
-        command = f"s5cmd cp --if-size-differ --if-source-newer {source} {destination}"
-        print(command)
-        _deploy_subprocess(command=command)
+    top_blob_hexcode = f"{task_id:01x}"
+    for sub_blob_hexcode_1 in range(16):
+        for sub_blob_hexcode_2 in range(16):
+            blob_subdirectory = f"{top_blob_hexcode}{sub_blob_hexcode_1:01x}{sub_blob_hexcode_2:01x}"
+            source = f"s3://dandiarchive/blobs/{blob_subdirectory}/*"
+            destination = f"{blobs_backup_directory}/{blob_subdirectory}/"
+            command = f"s5cmd cp --if-size-differ --if-source-newer {source} {destination}"
+            print(command)
+            _deploy_subprocess(command=command)
+
+    # Previous x256 matrix
+    # top_blob_hexcode = f"{task_id:02x}"
+    # for sub_blob_hexcode in range(16):
+    #     blob_subdirectory = f"{top_blob_hexcode}{sub_blob_hexcode:01x}"
+    #     source = f"s3://dandiarchive/blobs/{blob_subdirectory}/*"
+    #     destination = f"{blobs_backup_directory}/{blob_subdirectory}/"
+    #     command = f"s5cmd cp --if-size-differ --if-source-newer {source} {destination}"
+    #     print(command)
+    #     _deploy_subprocess(command=command)
 
 
 def _deploy_subprocess(
