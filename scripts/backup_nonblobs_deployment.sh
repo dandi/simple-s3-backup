@@ -13,5 +13,4 @@ backup dandi nonblobs $SLURM_ARRAY_TASK_ID
 
 # On the MIT cluster, set this up to run twice a day (midnight and noon) via:
 # crontab -e
-# 0 1,13 * * * flock -n /orcd/data/dandi/001/backup_logs/backup_nonblobs.lock sbatch \
-# /orcd/data/dandi/001/simple-s3-backup/scripts/backup_nonblobs_deployment.sh
+# 0 1,13 * * * flock -n /orcd/data/dandi/001/backup_logs/backup_nonblobs.lock sbatch /orcd/data/dandi/001/simple-s3-backup/scripts/backup_nonblobs_deployment.sh
