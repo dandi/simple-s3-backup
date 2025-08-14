@@ -55,16 +55,17 @@ def update_display_readme(use_cache: bool = True) -> None:
     outer_directory_to_local_object_count = data["outer_directory_to_local_object_count"]
 
     outer_ls_locations = list(outer_directory_to_remote_size.keys())
+    outer_ls_locations.sort(key=lambda path: (not path.endswith("/"), path))
 
     readme_file_path = pathlib.Path("/orcd") / "data" / "dandi" / "001" / "backup-status" / "README.md"
 
     today = _get_today()
     padding = (20, 40, 40)
     readme_lines = ["# DANDI Backup Status", ""]
-    readme_lines += [f"Current status of S3 bucket backup of 'dandiarchive' as of {today}[^1]", ""]
+    readme_lines += [f"Current status of S3 bucket backup of the DANDI Archive' as of {today.replace("-", "/")}.", ""]
     readme_lines += [f"| {'Location':<{padding[0]}} | {'Size':<{padding[1]}} | {'Number of Objects':<{padding[2]}} |"]
     readme_lines += [
-        f"| {"":<{padding[0]}} | {'Local / Remote (%)':<{padding[1]}} | {"Local / Remote (%)":<{padding[2]}} |"
+        f"| {"":<{padding[0]}} | {'Local / Remote (%)':<{padding[1]}} | {"Local / Remote (%)":<{padding[2]}}[^1] |"
     ]
     readme_lines += [f"| {"-" * padding[0]} | {"-" * padding[1]} | {"-" * padding[2]} |"]
     for location in outer_ls_locations:
@@ -84,7 +85,7 @@ def update_display_readme(use_cache: bool = True) -> None:
         readme_lines += [
             f"| {location:<{padding[0]}} | {size_string:<{padding[1]}} | {object_count_string:<{padding[2]}} |"
         ]
-    readme_lines += ["", "[^1]Note: reported percentage may exceed 100% due to delayed garbage collection.", ""]
+    readme_lines += ["", "[^1]: Reported percentage may exceed 100% due to delayed garbage collection.", ""]
 
     readme_content = "\n".join(readme_lines)
     with readme_file_path.open(mode="w") as file_stream:
