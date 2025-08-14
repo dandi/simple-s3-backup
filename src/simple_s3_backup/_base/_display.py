@@ -60,10 +60,13 @@ def update_display_readme(use_cache: bool = True) -> None:
 
     today = _get_today()
     padding = (20, 40, 40)
-    readme_lines = ["# DANDI Backup Status", "", f"Current status of S3 bucket backup of 'dandiarchive' as of {today}"]
-    readme_lines += [f"{'Location':<{padding[0]}} {'Size':<{padding[1]}} {'Number of Objects':<{padding[2]}}"]
-    readme_lines += [f"{"":<{padding[0]}} {'Local / Remote (%)':<{padding[1]}} {"Local / Remote (%)":<{padding[2]}}"]
-    readme_lines += ["=" * sum(padding)]
+    readme_lines = ["# DANDI Backup Status", ""]
+    readme_lines += [f"Current status of S3 bucket backup of 'dandiarchive' as of {today}[^1]", ""]
+    readme_lines += [f"| {'Location':<{padding[0]}} | {'Size':<{padding[1]}} | {'Number of Objects':<{padding[2]}} |"]
+    readme_lines += [
+        f"| {"":<{padding[0]}} | {'Local / Remote (%)':<{padding[1]}} | {"Local / Remote (%)":<{padding[2]}} |"
+    ]
+    readme_lines += [f"| {"-" * padding[0]} | {"-" * padding[1]} | {"-" * padding[2]} |"]
     for location in outer_ls_locations:
         local_size = outer_directory_to_local_size[location]
         remote_size = outer_directory_to_remote_size[location]
@@ -78,10 +81,10 @@ def update_display_readme(use_cache: bool = True) -> None:
         object_count_ratio = _format_ratio(numerator=local_object_count, denominator=remote_object_count)
         object_count_string = f"{local_object_count} / {remote_object_count} ({object_count_ratio})"
 
-        readme_lines += [f"{location:<{padding[0]}} {size_string:<{padding[1]}} {object_count_string:<{padding[2]}}"]
-    readme_lines += ["\n"]
-    readme_lines += ["Note: reported percentage may exceed 100% due to delayed garbage collection."]
-    readme_lines += ["\n"]
+        readme_lines += [
+            f"| {location:<{padding[0]}} | {size_string:<{padding[1]}} | {object_count_string:<{padding[2]}} |"
+        ]
+    readme_lines += ["", "[^1]Note: reported percentage may exceed 100% due to delayed garbage collection.", ""]
 
     readme_content = "\n".join(readme_lines)
     with readme_file_path.open(mode="w") as file_stream:
