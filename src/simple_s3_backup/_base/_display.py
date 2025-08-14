@@ -67,7 +67,7 @@ def update_display_readme(use_cache: bool = True) -> None:
         f"| {'Location':<{padding[0]}} | {'Size (Local / Remote)':<{padding[1]}} "
         f"| {'Number of Objects (Local / Remote)[^1]':<{padding[2]}} |"
     ]
-    readme_lines += [f"| {"-" * padding[0]} | {"-" * padding[1]} | {"-" * padding[2]} |"]
+    readme_lines += [f"| :{"-" * padding[0]}: | :{"-" * padding[1]}: | :{"-" * padding[2]}: |"]
     for location in outer_ls_locations:
         local_size = outer_directory_to_local_size[location]
         remote_size = outer_directory_to_remote_size[location]

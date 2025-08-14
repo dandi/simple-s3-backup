@@ -18,4 +18,4 @@ git push
 
 # On the MIT cluster, set this up to run once a day (6am) via:
 # crontab -e
-# 0 6 * * * flock -n /orcd/data/dandi/001/backup_logs/backup_nonblobs.lock sbatch /orcd/data/dandi/001/simple-s3-backup/scripts/update_dashboard.sh
+# 0 6 * * * flock -n /orcd/data/dandi/001/backup_logs/update_dashboard.lock sbatch /orcd/data/dandi/001/simple-s3-backup/scripts/update_dashboard.sh
