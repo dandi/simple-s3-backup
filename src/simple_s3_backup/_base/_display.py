@@ -63,9 +63,9 @@ def update_display_readme(use_cache: bool = True) -> None:
     padding = (20, 40, 40)
     readme_lines = ["# DANDI Backup Status", ""]
     readme_lines += [f"Current status of S3 bucket backup of the DANDI Archive' as of {today.replace("-", "/")}.", ""]
-    readme_lines += [f"| {'Location':<{padding[0]}} | {'Size':<{padding[1]}} | {'Number of Objects':<{padding[2]}} |"]
     readme_lines += [
-        f"| {"":<{padding[0]}} | {'Local / Remote (%)':<{padding[1]}} | {"Local / Remote (%)":<{padding[2]}}[^1] |"
+        f"| {'Location':<{padding[0]}} | {'Size (Local / Remote)':<{padding[1]}} "
+        f"| {'Number of Objects (Local / Remote)[^1]':<{padding[2]}} |"
     ]
     readme_lines += [f"| {"-" * padding[0]} | {"-" * padding[1]} | {"-" * padding[2]} |"]
     for location in outer_ls_locations:
