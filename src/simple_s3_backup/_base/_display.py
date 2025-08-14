@@ -56,7 +56,7 @@ def update_display_readme(use_cache: bool = True) -> None:
 
     outer_ls_locations = list(outer_directory_to_remote_size.keys())
 
-    readme_file_path = pathlib.Path("/orcd") / "data" / "dandi" / "backup-status" / "README.md"
+    readme_file_path = pathlib.Path("/orcd") / "data" / "dandi" / "001" / "backup-status" / "README.md"
 
     today = _get_today()
     padding = (20, 40, 40)
