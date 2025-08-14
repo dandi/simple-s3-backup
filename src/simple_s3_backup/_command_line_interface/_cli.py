@@ -1,6 +1,6 @@
 import click
 
-from .._base import backup_dandi_blobs, backup_dandi_nonblobs, display_current_status
+from .._base import backup_dandi_blobs, backup_dandi_nonblobs, display_current_status, update_display_readme
 
 
 # backup
@@ -39,8 +39,17 @@ def _backup_dandi_blobs(task_id: int) -> None:
 
 # backup dandi display
 @_dandi.command(name="display")
-def _backup_dandi_blobs() -> None:
+def _backup_dandi_display() -> None:
     """
     Pretty rendering for summary of current backup status.
     """
     display_current_status()
+
+
+# backup dandi dashboard
+@_dandi.command(name="dashboard")
+def _backup_dandi_dashboard() -> None:
+    """
+    Pretty rendering for summary of current backup status.
+    """
+    update_display_readme()
