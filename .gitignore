@@ -157,3 +157,6 @@ fabric.properties
 
 # Spyder
 .spyproject/*
+
+# Lock files
+.lock
