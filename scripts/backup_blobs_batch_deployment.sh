@@ -3,7 +3,7 @@
 #SBATCH --partition mit_normal
 #SBATCH --cpus-per-task 1
 #SBATCH --output /orcd/data/dandi/001/backup_logs/backup_blobs_batch.log-%A-%a
-#SBATCH --array 0-16
+#SBATCH --array 0-12
 
 source /etc/profile.d/modules.sh  # When run via crontab, this is needed to load the modules
 module load miniforge
