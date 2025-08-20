@@ -19,11 +19,7 @@ for x in {0..1}; do
   # TODO: test if mtime on bucket is upload time or actual file mtime
   s5cmd --dry-run cp --if-source-newer s3://dandiarchive/blobs/$x* . | awk '{print $3}' | sort > diffs/$x/newer_on_bucket.txt
 done
-backup dandi dashboard
+s3backup dandi dashboard
 git add README.md
 git commit --message "update"
 git push
-
-# On the MIT cluster, set this up to run once a day (6am) via:
-# crontab -e
-# 0 6 * * * flock -n /orcd/data/dandi/001/flocks/update_dashboard.lock sbatch /orcd/data/dandi/001/simple-s3-backup/scripts/update_dashboard.sh

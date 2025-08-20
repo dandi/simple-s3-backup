@@ -48,7 +48,7 @@ Issues = "https://github.com/dandi/simple-s3-backup/issues"
 Changelog = "https://github.com/dandi/simple-s3-backup/blob/master/CHANGELOG.md"
 
 [project.scripts]
-backup = "simple_s3_backup._command_line_interface._cli:_main"
+s3backup = "simple_s3_backup._command_line_interface._cli:_main"
 
 [dependency-groups]
 test = ["pytest"]

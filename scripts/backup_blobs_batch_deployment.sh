@@ -10,8 +10,4 @@ module load miniforge
 
 conda activate /orcd/data/dandi/001/s3-backup-environment
 
-backup dandi blobs $SLURM_ARRAY_TASK_ID
-
-# On the MIT cluster, set this up to run twice a day (midnight and noon) via:
-# crontab -e
-# 0 0 * * * flock -n /orcd/data/dandi/001/flocks/backup_blobs_batch.lock sbatch /orcd/data/dandi/001/simple-s3-backup/scripts/backup_blobs_batch_deployment.sh
+s3backup dandi blobs $SLURM_ARRAY_TASK_ID
