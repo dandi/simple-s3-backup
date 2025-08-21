@@ -40,6 +40,10 @@ def update_manifest() -> None:
     if local_checksums_file_path.exists() is False:
         local_checksums_file_path.write_text("{}")
 
+    problematic_blob_ids_file_path = manifests_directory / "problematic_blob_ids.yaml"
+    if problematic_blob_ids_file_path.exists() is False:
+        problematic_blob_ids_file_path.touch()
+
     remote_blob_id_to_info: dict[str, dict[str, int | datetime.datetime]] = dict()
     with s5cmd_ls_blobs_file_path.open(mode="r") as file_stream:
         collections.deque(
@@ -53,11 +57,9 @@ def update_manifest() -> None:
     with remote_checksums_file_path.open(mode="r") as file_stream:
         remote_blob_id_to_checksum: dict[str, str] = json.load(fp=file_stream)
 
-    local_checksums_file_path = manifests_directory / "local_checksums.json"
     with local_checksums_file_path.open(mode="r") as file_stream:
         local_blob_id_to_checksum: dict[str, str] = json.load(fp=file_stream)
 
-    problematic_blob_ids_file_path = manifests_directory / "problematic_blob_ids.yaml"
     with problematic_blob_ids_file_path.open(mode="r") as file_stream:
         problematic_blob_ids: dict[str, str] = yaml.safe_load(stream=file_stream)
 
