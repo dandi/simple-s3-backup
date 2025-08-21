@@ -1,4 +1,5 @@
 import collections
+import json
 import math
 import pathlib
 
@@ -7,43 +8,7 @@ import yaml
 from ._utils import _deploy_subprocess, _get_today
 
 
-def display_current_status(use_cache: bool = True) -> None:
-    data = _load_data(use_cache=use_cache)
-
-    outer_directory_to_remote_size = data["outer_directory_to_remote_size"]
-    outer_directory_to_remote_object_count = data["outer_directory_to_remote_object_count"]
-    outer_directory_to_local_size = data["outer_directory_to_local_size"]
-    outer_directory_to_local_object_count = data["outer_directory_to_local_object_count"]
-
-    outer_ls_locations = list(outer_directory_to_remote_size.keys())
-
-    today = _get_today()
-    padding = (20, 40, 40)
-    print(f"\n\nCurrent status of S3 bucket backup of 'dandiarchive' as of {today}\n")
-    print(f"{'Location':<{padding[0]}} {'Size':<{padding[1]}} {'Number of Objects':<{padding[2]}}")
-    print(f"{"":<{padding[0]}} {'Local / Remote (%)':<{padding[1]}} {"Local / Remote (%)":<{padding[2]}}")
-    print("=" * sum(padding))
-    for location in outer_ls_locations:
-        local_size = outer_directory_to_local_size[location]
-        remote_size = outer_directory_to_remote_size[location]
-
-        local_object_count = outer_directory_to_local_object_count[location]
-        remote_object_count = outer_directory_to_remote_object_count[location]
-
-        human_sizes = [_human_readable_size(size_in_bytes=size) for size in (local_size, remote_size)]
-        size_ratio = _format_ratio(numerator=local_size, denominator=remote_size)
-        size_string = f"{human_sizes[0]} / {human_sizes[1]} ({size_ratio})"
-
-        object_count_ratio = _format_ratio(numerator=local_object_count, denominator=remote_object_count)
-        object_count_string = f"{local_object_count} / {remote_object_count} ({object_count_ratio})"
-
-        print(f"{location:<{padding[0]}} {size_string:<{padding[1]}} {object_count_string:<{padding[2]}}")
-    print("\n")
-    print("Note: reported percentage may exceed 100% due to delayed garbage collection.")
-    print("\n")
-
-
-def update_display_readme(use_cache: bool = True) -> None:
+def update_display(use_cache: bool = True) -> None:
     """
     Update the README file of the DANDI backup status tracking repository.
     """
@@ -57,40 +22,120 @@ def update_display_readme(use_cache: bool = True) -> None:
     outer_ls_locations = list(outer_directory_to_remote_size.keys())
     outer_ls_locations.sort(key=lambda path: (not path.endswith("/"), path))
 
-    readme_file_path = pathlib.Path("/orcd") / "data" / "dandi" / "001" / "backup-status" / "README.md"
-
     today = _get_today()
+    readme_json = {
+        "title": "DANDI Backup Status",
+        "headers": [
+            f"Current status of S3 bucket backup of the DANDI Archive' as of {today.replace('-', '/')}.",
+        ],
+        "tails": ["[^1]: Reported percentage may exceed 100% due to delayed garbage collection."],
+        "data": {
+            "Location": outer_ls_locations,
+            "Size (Local / Remote)": [
+                f"{_human_readable_size(size_in_bytes=outer_directory_to_local_size[location])} / "
+                f"{_human_readable_size(size_in_bytes=outer_directory_to_remote_size[location])} "
+                f"({_format_ratio(numerator=outer_directory_to_local_size[location], denominator=outer_directory_to_remote_size[location])})"
+                for location in outer_ls_locations
+            ],
+            "Number of Objects (Local / Remote)[^1]": [
+                f"{outer_directory_to_local_object_count[location]} / "
+                f"{outer_directory_to_remote_object_count[location]} "
+                f"({_format_ratio(numerator=outer_directory_to_local_object_count[location], denominator=outer_directory_to_remote_object_count[location])})"
+                for location in outer_ls_locations
+            ],
+        },
+    }
+
+    readme_json_file_path = pathlib.Path("/orcd") / "data" / "dandi" / "001" / "backup-status" / "readme.json"
+    with readme_json_file_path.open(mode="w") as file_stream:
+        json.dump(obj=readme_json, fp=file_stream)
+
     padding = (20, 40, 40)
-    readme_lines = ["# DANDI Backup Status", ""]
-    readme_lines += [f"Current status of S3 bucket backup of the DANDI Archive' as of {today.replace("-", "/")}.", ""]
-    readme_lines += [
-        f"| {'Location':<{padding[0]}} | {'Size (Local / Remote)':<{padding[1]}} "
-        f"| {'Number of Objects (Local / Remote)[^1]':<{padding[2]}} |"
-    ]
-    readme_lines += [f"| :{"-" * padding[0]}: | :{"-" * padding[1]}: | :{"-" * padding[2]}: |"]
-    for location in outer_ls_locations:
-        local_size = outer_directory_to_local_size[location]
-        remote_size = outer_directory_to_remote_size[location]
+    readme_content = json_to_markdown_table(json_table=readme_json, padding=padding)
 
-        local_object_count = outer_directory_to_local_object_count[location]
-        remote_object_count = outer_directory_to_remote_object_count[location]
-
-        human_sizes = [_human_readable_size(size_in_bytes=size) for size in (local_size, remote_size)]
-        size_ratio = _format_ratio(numerator=local_size, denominator=remote_size)
-        size_string = f"{human_sizes[0]} / {human_sizes[1]} ({size_ratio})"
-
-        object_count_ratio = _format_ratio(numerator=local_object_count, denominator=remote_object_count)
-        object_count_string = f"{local_object_count} / {remote_object_count} ({object_count_ratio})"
-
-        readme_lines += [
-            f"| {location:<{padding[0]}} | {size_string:<{padding[1]}} | {object_count_string:<{padding[2]}} |"
-        ]
-    readme_lines += ["", "[^1]: Reported percentage may exceed 100% due to delayed garbage collection.", ""]
-
-    readme_content = "\n".join(readme_lines)
+    readme_file_path = pathlib.Path("/orcd") / "data" / "dandi" / "001" / "backup-status" / "README.md"
     with readme_file_path.open(mode="w") as file_stream:
         file_stream.write(readme_content)
 
+
+def json_to_markdown_table(json_table: dict, *, padding: tuple[int, ...] | None = None) -> str:
+    """
+    Convert a JSON object to a Markdown table.
+
+    Parameters
+    ----------
+    json_table : dict
+        The JSON data to convert.
+
+    Returns
+    -------
+    str
+        A string representing the Markdown table.
+
+    Examples
+    --------
+    json_table = {
+        "title": "My Example Table",
+        "headers": ["My header 1.", "My header 2."],
+        "tails": ["This is a tail.", "This is another tail."],
+        "data": {
+             "Name": ["Alice", "Bob", "Charlie"],
+             "Age": [30, 25, 35],
+             "City": ["New York", "Los Angeles", "Chicago"]
+         }
+    }
+
+    print(json_to_markdown_table(json_table=json_table))
+    >>> # My Example Table
+
+    My header 1.
+    My header 2.
+
+    | Name    | Age | City         |
+    | :---: | :---: | :----: |
+    | Alice   | 30  | New York     |
+    | Bob     | 25  | Los Angeles  |
+    | Charlie | 35  | Chicago      |
+
+    This is a tail.
+    This is another tail.
+    """
+    title = json_table.get("title", None)
+    headers = json_table.get("headers", None)
+    tails = json_table.get("tails", None)
+
+    data = json_table["data"]
+    column_names = list(data.keys())
+    rows: list[list[str, ...]] = [list(row) for row in zip(*(data[column_name] for column_name in column_names))]
+
+    if padding is None:
+        padding = tuple(
+            max(
+                len(column_name),
+                max(len(str(value)) for value in [column_name] + [row[column_index] for row in rows])
+            )
+            for column_index, column_name in enumerate(column_names)
+        )
+
+    markdown_table = []
+    if title is not None:
+        markdown_table += [f"# {title}", ""]
+    if headers is not None:
+        markdown_table += headers
+        markdown_table += [""]
+    formatted_column_names = [
+        f"{column_name:<{padding[column_index]}}" for column_index, column_name in enumerate(column_names)
+    ]
+    markdown_table += ["| " + " | ".join(formatted_column_names) + " |"]
+    formatted_dashes = [":" + "-" * (padding[column_index] - 2) + ":" for column_index in range(len(column_names))]
+    markdown_table += ["| " + " | ".join(formatted_dashes) + " |"]
+    for row in rows:
+        markdown_table += ["| " + " | ".join(f"{value:<{padding[column_index]}}" for column_index, value in enumerate(row)) + " |"]
+    if tails is not None:
+        markdown_table += [""]
+        markdown_table += tails
+
+    return "\n".join(markdown_table)
 
 def _load_data(use_cache: bool = True) -> dict:
     backup_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive")

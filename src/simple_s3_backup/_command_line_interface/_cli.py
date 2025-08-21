@@ -1,55 +1,53 @@
 import click
 
-from .._base import backup_dandi_blobs, backup_dandi_nonblobs, display_current_status, update_display_readme
+from .._base import backup_dandi_blobs, backup_dandi_nonblobs, display_current_status, update_display, update_manifest
 
 
-# backup
-@click.group(name="backup")
-def _main():
+# s3backup
+@click.group(name="s3backup")
+def _s3backup():
     pass
 
 
-# backup dandi
-@_main.group(name="dandi")
-def _dandi() -> None:
+# s3backup dandi
+@_s3backup.group(name="dandi")
+def _s3backup_dandi() -> None:
     """
     Backup DANDI bucket content.
     """
     pass
 
+# s3backup dandi manifest
+@_dandi.command(name="manifest")
+def _s3backup_dandi_manifest() -> None:
+    """
+    Form the latest manifest of what assets require backup.
+    """
+    update_manifest()
 
-# backup dandi nonblobs
+# s3backup dandi nonblobs
 @_dandi.command(name="nonblobs")
-def _backup_dandi_nonblobs() -> None:
+def _s3backup_dandi_nonblobs() -> None:
     """
     Backup all DANDI bucket non-blob directories.
     """
     backup_dandi_nonblobs()
 
 
-# backup dandi blobs <int>
+# s3backup dandi blobs <int>
 @_dandi.command(name="blobs")
 @click.argument("task_id", type=int)
-def _backup_dandi_blobs(task_id: int) -> None:
+def _s3backup_dandi_blobs(task_id: int) -> None:
     """
     Backup DANDI blob directories correspond to the `task_id`.
     """
     backup_dandi_blobs(task_id=task_id)
 
 
-# backup dandi display
-@_dandi.command(name="display")
-def _backup_dandi_display() -> None:
-    """
-    Pretty rendering for summary of current backup status.
-    """
-    display_current_status()
-
-
-# backup dandi dashboard
+# s3backup dandi dashboard
 @_dandi.command(name="dashboard")
-def _backup_dandi_dashboard() -> None:
+def _s3backup_dandi_dashboard() -> None:
     """
     Pretty rendering for summary of current backup status.
     """
-    update_display_readme()
+    update_display()
