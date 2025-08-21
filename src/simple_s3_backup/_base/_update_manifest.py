@@ -36,7 +36,7 @@ def update_manifest() -> None:
         # _deploy_subprocess(command=command)
 
     remote_blob_id_to_info: dict[str, dict[str, str]] = dict()
-    with s5cmd_ls_blobs_file_path as file_stream:
+    with s5cmd_ls_blobs_file_path.open(mode="r") as file_stream:
         collections.deque(
             (
                 _process_s5cmd_ls_line(line=line.strip(), info=remote_blob_id_to_info)
