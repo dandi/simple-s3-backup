@@ -215,7 +215,7 @@ def _calculate_checksum(file_path: pathlib.Path) -> str:
     """
     Calculate the SHA-256 checksum of a file.
 
-    Processes the file in 10 MiB chunks to avoid memory issues with large files.
+    Processes the file in chunks to avoid memory issues with large files.
 
     Parameters
     ----------
@@ -227,7 +227,7 @@ def _calculate_checksum(file_path: pathlib.Path) -> str:
     str
         The SHA-256 checksum of the file.
     """
-    chunk_size_in_bytes = 10_485_760  # 10 MiB
+    chunk_size_in_bytes = 104_857_600  # 100 MiB
 
     hasher = hashlib.sha256()
     with file_path.open(mode="rb") as file_stream:
