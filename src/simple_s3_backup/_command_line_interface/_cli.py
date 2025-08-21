@@ -20,11 +20,17 @@ def _s3backup_dandi() -> None:
 
 # s3backup dandi manifest
 @_s3backup_dandi.command(name="manifest")
-def _s3backup_dandi_manifest() -> None:
+@click.option(
+    "--limit",
+    type=int,
+    required=False,
+    default=5,
+)
+def _s3backup_dandi_manifest(limit: int | None = 5) -> None:
     """
     Form the latest manifest of what assets require backup.
     """
-    update_manifest()
+    update_manifest(limit=limit)
 
 
 # s3backup dandi nonblobs

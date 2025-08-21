@@ -11,7 +11,7 @@ import yaml
 from ._utils import _deploy_subprocess
 
 
-def update_manifest() -> None:
+def update_manifest(limit: int = 5) -> None:
     """Update the manifest file."""
     manifests_directory = pathlib.Path("/orcd/data/dandi/001/manifests")
     manifests_directory.mkdir(exist_ok=True)
@@ -73,9 +73,8 @@ def update_manifest() -> None:
     try:
         blob_ids_to_update = []
         blobs_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive/blobs")
-        LIMIT = 5
         for counter, (blob_id, info) in enumerate(remote_blob_id_to_info.items()):
-            if counter >= LIMIT:
+            if counter >= limit:
                 return
 
             local_blob_file_path = blobs_directory / blob_id[:3] / blob_id[3:6] / blob_id
