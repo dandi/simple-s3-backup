@@ -32,15 +32,15 @@ def update_display(use_cache: bool = True) -> None:
         "data": {
             "Location": outer_ls_locations,
             "Size (Local / Remote)": [
-                f"{_human_readable_size(size_in_bytes=outer_directory_to_local_size[location])} / "
-                f"{_human_readable_size(size_in_bytes=outer_directory_to_remote_size[location])} "
-                f"({_format_ratio(numerator=outer_directory_to_local_size[location], denominator=outer_directory_to_remote_size[location])})"
+                f"{_human_readable_size(size_in_bytes=(local_size:=outer_directory_to_local_size[location]))} / "
+                f"{_human_readable_size(size_in_bytes=(remote_size:=outer_directory_to_remote_size[location]))} "
+                f"({_format_ratio(numerator=local_size, denominator=remote_size)})"
                 for location in outer_ls_locations
             ],
             "Number of Objects (Local / Remote)[^1]": [
-                f"{outer_directory_to_local_object_count[location]} / "
-                f"{outer_directory_to_remote_object_count[location]} "
-                f"({_format_ratio(numerator=outer_directory_to_local_object_count[location], denominator=outer_directory_to_remote_object_count[location])})"
+                f"{(local_count:=outer_directory_to_local_object_count[location])} / "
+                f"{(remote_count:=outer_directory_to_remote_object_count[location])} "
+                f"({_format_ratio(numerator=local_count, denominator=remote_count)})"
                 for location in outer_ls_locations
             ],
         },
@@ -110,10 +110,7 @@ def json_to_markdown_table(json_table: dict, *, padding: tuple[int, ...] | None 
 
     if padding is None:
         padding = tuple(
-            max(
-                len(column_name),
-                max(len(str(value)) for value in [column_name] + [row[column_index] for row in rows])
-            )
+            max(len(column_name), max(len(str(value)) for value in [column_name] + [row[column_index] for row in rows]))
             for column_index, column_name in enumerate(column_names)
         )
 
@@ -130,12 +127,15 @@ def json_to_markdown_table(json_table: dict, *, padding: tuple[int, ...] | None 
     formatted_dashes = [":" + "-" * (padding[column_index] - 2) + ":" for column_index in range(len(column_names))]
     markdown_table += ["| " + " | ".join(formatted_dashes) + " |"]
     for row in rows:
-        markdown_table += ["| " + " | ".join(f"{value:<{padding[column_index]}}" for column_index, value in enumerate(row)) + " |"]
+        markdown_table += [
+            "| " + " | ".join(f"{value:<{padding[column_index]}}" for column_index, value in enumerate(row)) + " |"
+        ]
     if tails is not None:
         markdown_table += [""]
         markdown_table += tails
 
     return "\n".join(markdown_table)
+
 
 def _load_data(use_cache: bool = True) -> dict:
     backup_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive")

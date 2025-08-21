@@ -1,6 +1,6 @@
 import click
 
-from .._base import backup_dandi_blobs, backup_dandi_nonblobs, display_current_status, update_display, update_manifest
+from .._base import backup_dandi_blobs, backup_dandi_nonblobs, update_display, update_manifest
 
 
 # s3backup
@@ -17,16 +17,18 @@ def _s3backup_dandi() -> None:
     """
     pass
 
+
 # s3backup dandi manifest
-@_dandi.command(name="manifest")
+@_s3backup_dandi.command(name="manifest")
 def _s3backup_dandi_manifest() -> None:
     """
     Form the latest manifest of what assets require backup.
     """
     update_manifest()
 
+
 # s3backup dandi nonblobs
-@_dandi.command(name="nonblobs")
+@_s3backup_dandi.command(name="nonblobs")
 def _s3backup_dandi_nonblobs() -> None:
     """
     Backup all DANDI bucket non-blob directories.
@@ -35,7 +37,7 @@ def _s3backup_dandi_nonblobs() -> None:
 
 
 # s3backup dandi blobs <int>
-@_dandi.command(name="blobs")
+@_s3backup_dandi.command(name="blobs")
 @click.argument("task_id", type=int)
 def _s3backup_dandi_blobs(task_id: int) -> None:
     """
@@ -45,7 +47,7 @@ def _s3backup_dandi_blobs(task_id: int) -> None:
 
 
 # s3backup dandi dashboard
-@_dandi.command(name="dashboard")
+@_s3backup_dandi.command(name="dashboard")
 def _s3backup_dandi_dashboard() -> None:
     """
     Pretty rendering for summary of current backup status.

@@ -2,10 +2,13 @@ import collections
 import functools
 import hashlib
 import json
+import pathlib
 import time
+
 import yaml
 
 from ._utils import _deploy_subprocess
+
 
 def update_manifest() -> None:
     """Update the manifest file."""
@@ -14,8 +17,7 @@ def update_manifest() -> None:
 
     s5cmd_ls_blobs_file_path = manifests_directory / "s5cmd_ls_blobs.txt"
     s5cmd_ls_needs_update = (
-        not manifest_path.exists() or
-        (time.time() - manifest_path.stat().st_mtime) > 86_400
+        not s5cmd_ls_blobs_file_path.exists() or (time.time() - s5cmd_ls_blobs_file_path.stat().st_mtime) > 86_400
     )
     if s5cmd_ls_needs_update is True:
         command = f"s5cmd ls s3://dandiarchive/blobs/* > {s5cmd_ls_blobs_file_path}"
@@ -24,8 +26,7 @@ def update_manifest() -> None:
 
     remote_checksums_file_path = manifests_directory / "remote_checksums.json"
     remote_checksum_needs_update = (
-        not remote_checksums_file_path.exists() or
-        (time.time() - remote_checksums_file_path.stat().st_mtime) > 86_400
+        not remote_checksums_file_path.exists() or (time.time() - remote_checksums_file_path.stat().st_mtime) > 86_400
     )
     if remote_checksum_needs_update is True:
         # TODO for Kitware
@@ -37,7 +38,10 @@ def update_manifest() -> None:
     remote_blob_id_to_info: dict[str, dict[str, str]] = dict()
     with s5cmd_ls_blobs_file_path as file_stream:
         collections.deque(
-            (_process_s5cmd_ls_line(line=line.strip(), info=remote_blob_id_to_info) for line in file_stream.readlines()),
+            (
+                _process_s5cmd_ls_line(line=line.strip(), info=remote_blob_id_to_info)
+                for line in file_stream.readlines()
+            ),
             maxlen=0,
         )
 
@@ -156,6 +160,7 @@ def _process_s5cmd_ls_line(line: str, info: dict) -> None:
     mtime = int(parts[1])
 
     info[blobs_id] = {"size": size, "mtime": mtime}
+
 
 @functools.lru_cache(maxsize=None)
 def _calculate_checksum(file_path: pathlib.Path) -> str:
