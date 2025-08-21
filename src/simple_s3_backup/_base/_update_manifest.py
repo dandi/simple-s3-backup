@@ -182,6 +182,8 @@ def update_manifest(limit: int | None = None) -> None:
         with blobs_to_remove_file_path.open(mode="w") as file_stream:
             yaml.dump(data=blobs_to_remove, stream=file_stream, sort_keys=False)
 
+        print("Processed errored out but caches were saved!")
+
 
 def _process_s5cmd_ls_line(line: str, info: dict) -> None:
     """
