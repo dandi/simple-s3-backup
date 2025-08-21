@@ -36,6 +36,10 @@ def update_manifest() -> None:
         # print(f"Updating local `s5cmd ls` copy!\n{command}")
         # _deploy_subprocess(command=command)
 
+    local_checksums_file_path = manifests_directory / "local_checksums.json"
+    if local_checksums_file_path.exists() is False:
+        local_checksums_file_path.write_text("{}")
+
     remote_blob_id_to_info: dict[str, dict[str, int | datetime.datetime]] = dict()
     with s5cmd_ls_blobs_file_path.open(mode="r") as file_stream:
         collections.deque(
@@ -46,7 +50,6 @@ def update_manifest() -> None:
             maxlen=0,
         )
 
-    remote_checksums_file_path = manifests_directory / "remote_checksums.json"
     with remote_checksums_file_path.open(mode="r") as file_stream:
         remote_blob_id_to_checksum: dict[str, str] = json.load(fp=file_stream)
 
