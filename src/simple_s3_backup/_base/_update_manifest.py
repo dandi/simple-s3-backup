@@ -94,6 +94,7 @@ def update_manifest() -> None:
                 remote_checksum = remote_blob_id_to_checksum.get(blob_id, None)
 
                 if local_checksum is None:
+                    print(f"Calculating checksum for blob ID {blob_id}")
                     local_checksum = _calculate_checksum(file_path=local_blob_file_path)
                     local_blob_id_to_checksum[blob_id] = local_checksum
 
@@ -157,7 +158,7 @@ def update_manifest() -> None:
             json.dump(obj=local_blob_id_to_checksum, fp=file_stream, indent=1)
 
         with problematic_blob_ids_file_path.open(mode="w") as file_stream:
-            file_stream.write("\n".join(sorted(problematic_blob_ids)))
+            yaml.dump(data=problematic_blob_ids, stream=file_stream, sort_keys=False)
 
         with blobs_to_remove_file_path.open(mode="w") as file_stream:
             yaml.dump(data=blobs_to_remove, stream=file_stream, sort_keys=False)
