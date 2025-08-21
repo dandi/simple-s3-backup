@@ -57,6 +57,7 @@ def update_manifest(limit: int | None = None) -> None:
             ),
             maxlen=0,
         )
+    print(len(remote_blob_id_to_info))
 
     with remote_checksums_file_path.open(mode="r") as file_stream:
         remote_blob_id_to_checksum: dict[str, str] = json.load(fp=file_stream)
