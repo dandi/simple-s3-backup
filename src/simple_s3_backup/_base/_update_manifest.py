@@ -94,7 +94,7 @@ def update_manifest() -> None:
                 remote_checksum = remote_blob_id_to_checksum.get(blob_id, None)
 
                 if local_checksum is None:
-                    print(f"Calculating checksum for blob ID {blob_id}")
+                    print(f"Calculating checksum for blob ID {blob_id} due to mtime mismatch.")
                     local_checksum = _calculate_checksum(file_path=local_blob_file_path)
                     local_blob_id_to_checksum[blob_id] = local_checksum
 
@@ -127,7 +127,10 @@ def update_manifest() -> None:
 
                 blob_ids_to_update.append(blob_id)
             else:
-                problematic_blob_ids[blob_id] = "Local size is greater than remote size, but mtime is older."
+                problematic_blob_ids[blob_id] = (
+                    f"Local size ({local_size}) is greater than remote size ({info['size']}), "
+                    f"but mtime ({local_mtime}) is older ({info['mtime']})."
+                )
 
             # Case 4: Local mtime is after remote mtime, size matches, so ensure the checksums match
             # If they do not, mark the local copy for removal and download from remote
@@ -137,6 +140,7 @@ def update_manifest() -> None:
             remote_checksum = remote_blob_id_to_checksum.get(blob_id, None)
 
             if local_checksum is None:
+                print(f"Calculating checksum for blob ID {blob_id}.")
                 local_checksum = _calculate_checksum(file_path=local_blob_file_path)
                 local_blob_id_to_checksum[blob_id] = local_checksum
 
