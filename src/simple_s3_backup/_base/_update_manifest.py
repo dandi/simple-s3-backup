@@ -157,7 +157,7 @@ def _process_s5cmd_ls_line(line: str, info: dict) -> None:
     blob_path = parts[-1]
     blobs_id = blob_path.split("/")[-1]
 
-    size = int(parts[2])
+    size = int(parts[-3])
     mtime = datetime.datetime.strptime(date_string=parts[:1], format="%Y-%m-%d %H:%M:%S")
 
     info[blobs_id] = {"size": size, "mtime": mtime}
