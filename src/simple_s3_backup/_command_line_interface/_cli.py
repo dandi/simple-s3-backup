@@ -26,7 +26,7 @@ def _s3backup_dandi() -> None:
     required=False,
     default=5,
 )
-def _s3backup_dandi_manifest(limit: int | None = 5) -> None:
+def _s3backup_dandi_manifest(limit: int | None = None) -> None:
     """
     Form the latest manifest of what assets require backup.
     """

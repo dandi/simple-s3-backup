@@ -11,7 +11,7 @@ import yaml
 from ._utils import _deploy_subprocess
 
 
-def update_manifest(limit: int = 5) -> None:
+def update_manifest(limit: int | None = None) -> None:
     """Update the manifest file."""
     manifests_directory = pathlib.Path("/orcd/data/dandi/001/manifests")
     manifests_directory.mkdir(exist_ok=True)
@@ -73,6 +73,7 @@ def update_manifest(limit: int = 5) -> None:
     try:
         blob_ids_to_update = []
         blobs_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive/blobs")
+        limit = limit or len(remote_blob_id_to_info)
         for counter, (blob_id, info) in enumerate(remote_blob_id_to_info.items()):
             if counter >= limit:
                 return
