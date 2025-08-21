@@ -1,4 +1,5 @@
 import collections
+import datetime
 import functools
 import hashlib
 import json
@@ -35,7 +36,7 @@ def update_manifest() -> None:
         # print(f"Updating local `s5cmd ls` copy!\n{command}")
         # _deploy_subprocess(command=command)
 
-    remote_blob_id_to_info: dict[str, dict[str, str]] = dict()
+    remote_blob_id_to_info: dict[str, dict[str, int | datetime.datetime]] = dict()
     with s5cmd_ls_blobs_file_path.open(mode="r") as file_stream:
         collections.deque(
             (
@@ -70,7 +71,7 @@ def update_manifest() -> None:
         # Case 2: Local copy of blob exists, but mtime on remote is newer
         # Keep in mind that local mtime is when the file was first downloaded
         # Compare the local and remote checksums
-        local_mtime = int(local_blob_file_path.stat().st_mtime)
+        local_mtime = datetime.datetime.fromtimestamp(timestamp=local_blob_file_path.stat().st_mtime)
         if local_mtime <= info["mtime"]:
             local_checksum = local_blob_id_to_checksum.get(blob_id, None)
             remote_checksum = remote_blob_id_to_checksum.get(blob_id, None)
@@ -151,13 +152,13 @@ def _process_s5cmd_ls_line(line: str, info: dict) -> None:
     tuple[str, int, int]
         A tuple containing the blob ID, size in bytes, and modification time.
     """
-    parts = line.split("\t")
+    parts = line.split(" ")
 
-    blob_path = parts[3]
+    blob_path = parts[-1]
     blobs_id = blob_path.split("/")[-1]
 
     size = int(parts[2])
-    mtime = int(parts[1])
+    mtime = datetime.datetime.strptime(date_string=parts[:1], format="%Y-%m-%d %H:%M:%S")
 
     info[blobs_id] = {"size": size, "mtime": mtime}
 
