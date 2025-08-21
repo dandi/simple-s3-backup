@@ -24,7 +24,7 @@ def _s3backup_dandi() -> None:
     "--limit",
     type=int,
     required=False,
-    default=5,
+    default=None,
 )
 def _s3backup_dandi_manifest(limit: int | None = None) -> None:
     """
