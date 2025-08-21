@@ -98,11 +98,14 @@ def update_manifest(limit: int = 5) -> None:
                     local_blob_id_to_checksum[blob_id] = local_checksum
 
                 if remote_checksum is None:
-                    problematic_blob_ids[blob_id] = "Remote checksum is missing."
+                    message = f"PROBLEM: Remote checksum is missing for blob ID {blob_id}."
+                    print(message)
+                    problematic_blob_ids[blob_id] = message
                     continue
 
                 # Case 2a: Local content does not match remote - mark local copy for removal and download from remote
                 if local_checksum != remote_checksum:
+                    print(f"REMOVE: Checksum mismatch for blob ID {blob_id}.")
                     new_path = local_blob_file_path.parent / f"{local_blob_file_path.name}.rmv"
                     local_blob_file_path = local_blob_file_path.rename(new_path)
                     blobs_to_remove[local_blob_file_path] = 0
@@ -110,7 +113,12 @@ def update_manifest(limit: int = 5) -> None:
                     blob_ids_to_update.append(blob_id)
                 # Case 2b: It is a question why the mtimes differ so add this to the problematic blob list
                 else:
-                    problematic_blob_ids[blob_id] = "Remote mtime is newer than local mtime, but checksums match."
+                    message = (
+                        f"PROBLEM: Remote mtime ({info['mtime']}) is newer than "
+                        "local mtime ({local_mtime}), but checksums match."
+                    )
+                    print(message)
+                    problematic_blob_ids[blob_id] = message
                 continue
 
             # Case 3: Local mtime is after remote mtime, but size differs
@@ -118,7 +126,7 @@ def update_manifest(limit: int = 5) -> None:
             # If local size is greater than remote, then something is very wrong so add it to the problematic blob list
             local_size = local_blob_file_path.stat().st_size
             if local_size < info["size"]:
-                print(f"Local blob ID {blob_id} size ({local_size}) is less than remote size ({info['size']}).")
+                print(f"REMOVE: Local blob ID {blob_id} size ({local_size}) is less than remote size ({info['size']}).")
 
                 new_path = local_blob_file_path.parent / f"{local_blob_file_path.name}.rmv"
                 local_blob_file_path = local_blob_file_path.rename(new_path)
@@ -126,10 +134,12 @@ def update_manifest(limit: int = 5) -> None:
 
                 blob_ids_to_update.append(blob_id)
             elif local_size != info["size"]:
-                problematic_blob_ids[blob_id] = (
-                    f"Local size ({local_size}) is greater than remote size ({info['size']}), "
+                message = (
+                    f"PROBLEM: Local size ({local_size}) is greater than remote size ({info['size']}), "
                     f"but mtime ({local_mtime}) is older ({info['mtime']})."
                 )
+                print(message)
+                problematic_blob_ids[blob_id] = message
 
             # Case 4: Local mtime is after remote mtime, size matches, so ensure the checksums match
             # If they do not, mark the local copy for removal and download from remote
@@ -144,10 +154,13 @@ def update_manifest(limit: int = 5) -> None:
                 local_blob_id_to_checksum[blob_id] = local_checksum
 
             if remote_checksum is None:
-                problematic_blob_ids[blob_id] = "Remote checksum is missing."
+                message = f"PROBLEM: Remote checksum is missing for blob ID {blob_id}."
+                print(message)
+                problematic_blob_ids[blob_id] = message
                 continue
 
             if local_checksum != remote_checksum:
+                print(f"REMOVE: Checksum mismatch for blob ID {blob_id}.")
                 new_path = local_blob_file_path.parent / f"{local_blob_file_path.name}.rmv"
                 local_blob_file_path = local_blob_file_path.rename(new_path)
                 blobs_to_remove[local_blob_file_path] = 0
