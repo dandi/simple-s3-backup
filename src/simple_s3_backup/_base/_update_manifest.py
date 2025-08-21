@@ -44,6 +44,10 @@ def update_manifest() -> None:
     if problematic_blob_ids_file_path.exists() is False:
         problematic_blob_ids_file_path.touch()
 
+    blobs_to_remove_file_path = manifests_directory / "blobs_to_remove.yaml"
+    if blobs_to_remove_file_path.exists() is False:
+        blobs_to_remove_file_path.touch()
+
     remote_blob_id_to_info: dict[str, dict[str, int | datetime.datetime]] = dict()
     with s5cmd_ls_blobs_file_path.open(mode="r") as file_stream:
         collections.deque(
@@ -61,23 +65,73 @@ def update_manifest() -> None:
         local_blob_id_to_checksum: dict[str, str] = json.load(fp=file_stream)
 
     with problematic_blob_ids_file_path.open(mode="r") as file_stream:
-        problematic_blob_ids: dict[str, str] = yaml.safe_load(stream=file_stream)
+        problematic_blob_ids: dict[str, str] = yaml.safe_load(stream=file_stream) or dict()
 
-    blob_ids_to_update = []
-    blobs_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive/blobs")
-    for blob_id, info in remote_blob_id_to_info.items():
-        local_blob_file_path = blobs_directory / blob_id[:3] / blob_id[3:6] / blob_id
+    with blobs_to_remove_file_path.open(mode="r") as file_stream:
+        blobs_to_remove: dict[str, str] = yaml.safe_load(stream=file_stream) or dict()
 
-        # Case 1: Local copy of blob on remote does not exist - always download
-        if local_blob_file_path.exists() is False:
-            blob_ids_to_update.append(blob_id)
-            continue
+    try:
+        blob_ids_to_update = []
+        blobs_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive/blobs")
+        LIMIT = 5
+        for counter, (blob_id, info) in enumerate(remote_blob_id_to_info.items()):
+            if counter >= LIMIT:
+                return
 
-        # Case 2: Local copy of blob exists, but mtime on remote is newer
-        # Keep in mind that local mtime is when the file was first downloaded
-        # Compare the local and remote checksums
-        local_mtime = datetime.datetime.fromtimestamp(timestamp=local_blob_file_path.stat().st_mtime)
-        if local_mtime <= info["mtime"]:
+            local_blob_file_path = blobs_directory / blob_id[:3] / blob_id[3:6] / blob_id
+
+            # Case 1: Local copy of blob on remote does not exist - always download
+            if local_blob_file_path.exists() is False:
+                blob_ids_to_update.append(blob_id)
+                continue
+
+            # Case 2: Local copy of blob exists, but mtime on remote is newer
+            # Keep in mind that local mtime is when the file was first downloaded
+            # Compare the local and remote checksums
+            local_mtime = datetime.datetime.fromtimestamp(timestamp=local_blob_file_path.stat().st_mtime)
+            if local_mtime <= info["mtime"]:
+                local_checksum = local_blob_id_to_checksum.get(blob_id, None)
+                remote_checksum = remote_blob_id_to_checksum.get(blob_id, None)
+
+                if local_checksum is None:
+                    local_checksum = _calculate_checksum(file_path=local_blob_file_path)
+                    local_blob_id_to_checksum[blob_id] = local_checksum
+
+                if remote_checksum is None:
+                    problematic_blob_ids[blob_id] = "Remote checksum is missing."
+                    continue
+
+                # Case 2a: Local content does not match remote - mark local copy for removal and download from remote
+                if local_checksum != remote_checksum:
+                    new_path = local_blob_file_path.parent / f"{local_blob_file_path.name}.rmv"
+                    local_blob_file_path = local_blob_file_path.rename(new_path)
+                    blobs_to_remove[local_blob_file_path] = 0
+
+                    blob_ids_to_update.append(blob_id)
+                # Case 2b: It is a question why the mtimes differ so add this to the problematic blob list
+                else:
+                    problematic_blob_ids[blob_id] = "Remote mtime is newer than local mtime, but checksums match."
+                continue
+
+            # Case 3: Local mtime is after remote mtime, but size differs
+            # If local size is less than remote, this can only mean the first attempt to download the asset failed
+            # If local size is greater than remote, then something is very wrong so add it to the problematic blob list
+            local_size = local_blob_file_path.stat().st_size
+            if local_size < info["size"]:
+                print(f"Local blob ID {blob_id} size ({local_size}) is less than remote size ({info['size']}).")
+
+                new_path = local_blob_file_path.parent / f"{local_blob_file_path.name}.rmv"
+                local_blob_file_path = local_blob_file_path.rename(new_path)
+                blobs_to_remove[local_blob_file_path] = 180
+
+                blob_ids_to_update.append(blob_id)
+            else:
+                problematic_blob_ids[blob_id] = "Local size is greater than remote size, but mtime is older."
+
+            # Case 4: Local mtime is after remote mtime, size matches, so ensure the checksums match
+            # If they do not, mark the local copy for removal and download from remote
+            # Unclear why this would happen - possible corruption that occurred locally (or conceptually, remotely)
+            # TODO: perhaps add warning to the dashboard if this occurs so we can investigate
             local_checksum = local_blob_id_to_checksum.get(blob_id, None)
             remote_checksum = remote_blob_id_to_checksum.get(blob_id, None)
 
@@ -89,58 +143,24 @@ def update_manifest() -> None:
                 problematic_blob_ids[blob_id] = "Remote checksum is missing."
                 continue
 
-            # Case 2a: Local content does not match remote - mark local copy for removal and download from remote
             if local_checksum != remote_checksum:
-                new_path = local_blob_file_path.parent / f"{local_blob_file_path.name}.rmv.0"
-                local_blob_file_path.rename(new_path)
+                new_path = local_blob_file_path.parent / f"{local_blob_file_path.name}.rmv"
+                local_blob_file_path = local_blob_file_path.rename(new_path)
+                blobs_to_remove[local_blob_file_path] = 0
 
                 blob_ids_to_update.append(blob_id)
-            # Case 2b: It is a question why the mtimes differ so add this to the problematic blob list
-            else:
-                problematic_blob_ids[blob_id] = "Remote mtime is newer than local mtime, but checksums match."
-            continue
+    finally:
+        blobs_to_update_file_path = manifests_directory / "blobs_to_update.txt"
+        blobs_to_update_file_path.write_text("\n".join(blob_ids_to_update))
 
-        # Case 3: Local mtime is after remote mtime, but size differs
-        # If local size is less than remote, this can only mean the first attempt to download the asset failed
-        # If local size is greater than remote, then something is very wrong so add it to the problematic blob list
-        local_size = local_blob_file_path.stat().st_size
-        if local_size <= info["size"]:
-            new_path = local_blob_file_path.parent / f"{local_blob_file_path.name}.rmv.180"
-            local_blob_file_path.rename(new_path)
+        with local_checksums_file_path.open(mode="w") as file_stream:
+            json.dump(obj=local_blob_id_to_checksum, fp=file_stream, indent=1)
 
-            blob_ids_to_update.append(blob_id)
-        else:
-            problematic_blob_ids[blob_id] = "Local size is greater than remote size, but mtime is older."
+        with problematic_blob_ids_file_path.open(mode="w") as file_stream:
+            file_stream.write("\n".join(sorted(problematic_blob_ids)))
 
-        # Case 4: Local mtime is after remote mtime, size matches, so ensure the checksums match
-        # If they do not, mark the local copy for removal and download from remote
-        # Unclear why this would happen - possible corruption that occurred locally (or conceptually, remotely)
-        # TODO: perhaps add warning to the dashboard if this occurs so we can investigate
-        local_checksum = local_blob_id_to_checksum.get(blob_id, None)
-        remote_checksum = remote_blob_id_to_checksum.get(blob_id, None)
-
-        if local_checksum is None:
-            local_checksum = _calculate_checksum(file_path=local_blob_file_path)
-            local_blob_id_to_checksum[blob_id] = local_checksum
-
-        if remote_checksum is None:
-            problematic_blob_ids[blob_id] = "Remote checksum is missing."
-            continue
-
-        if local_checksum != remote_checksum:
-            new_path = local_blob_file_path.parent / f"{local_blob_file_path.name}.rmv.0"
-            local_blob_file_path.rename(new_path)
-
-            blob_ids_to_update.append(blob_id)
-
-    blobs_to_update_file_path = manifests_directory / "blobs_to_update.txt"
-    blobs_to_update_file_path.write_text("\n".join(blob_ids_to_update))
-
-    with local_checksums_file_path.open(mode="w") as file_stream:
-        json.dump(obj=local_blob_id_to_checksum, fp=file_stream, indent=1)
-
-    with problematic_blob_ids_file_path.open(mode="w") as file_stream:
-        file_stream.write("\n".join(sorted(problematic_blob_ids)))
+        with blobs_to_remove_file_path.open(mode="w") as file_stream:
+            yaml.dump(data=blobs_to_remove, stream=file_stream, sort_keys=False)
 
 
 def _process_s5cmd_ls_line(line: str, info: dict) -> None:
