@@ -93,16 +93,17 @@ def update_manifest(limit: int | None = None) -> None:
                 local_checksum = local_blob_id_to_checksum.get(blob_id, None)
                 remote_checksum = remote_blob_id_to_checksum.get(blob_id, None)
 
-                if local_checksum is None:
-                    print(f"Calculating checksum for blob ID {blob_id} due to mtime mismatch.")
-                    local_checksum = _calculate_checksum(file_path=local_blob_file_path)
-                    local_blob_id_to_checksum[blob_id] = local_checksum
-
+                # Check remote first to know to skip
                 if remote_checksum is None:
                     message = f"PROBLEM: Remote checksum is missing for blob ID {blob_id}."
                     print(message)
                     problematic_blob_ids[blob_id] = message
                     continue
+
+                if local_checksum is None:
+                    print(f"Calculating checksum for blob ID {blob_id} due to mtime mismatch.")
+                    local_checksum = _calculate_checksum(file_path=local_blob_file_path)
+                    local_blob_id_to_checksum[blob_id] = local_checksum
 
                 # Case 2a: Local content does not match remote - mark local copy for removal and download from remote
                 if local_checksum != remote_checksum:
@@ -149,16 +150,17 @@ def update_manifest(limit: int | None = None) -> None:
             local_checksum = local_blob_id_to_checksum.get(blob_id, None)
             remote_checksum = remote_blob_id_to_checksum.get(blob_id, None)
 
-            if local_checksum is None:
-                print(f"Calculating checksum for blob ID {blob_id}.")
-                local_checksum = _calculate_checksum(file_path=local_blob_file_path)
-                local_blob_id_to_checksum[blob_id] = local_checksum
-
+            # Check remote first to know to skip
             if remote_checksum is None:
                 message = f"PROBLEM: Remote checksum is missing for blob ID {blob_id}."
                 print(message)
                 problematic_blob_ids[blob_id] = message
                 continue
+
+            if local_checksum is None:
+                print(f"Calculating checksum for blob ID {blob_id}.")
+                local_checksum = _calculate_checksum(file_path=local_blob_file_path)
+                local_blob_id_to_checksum[blob_id] = local_checksum
 
             if local_checksum != remote_checksum:
                 print(f"REMOVE: Checksum mismatch for blob ID {blob_id}.")
