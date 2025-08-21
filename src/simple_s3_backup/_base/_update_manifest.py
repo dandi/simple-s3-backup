@@ -89,7 +89,7 @@ def update_manifest() -> None:
             # Keep in mind that local mtime is when the file was first downloaded
             # Compare the local and remote checksums
             local_mtime = datetime.datetime.fromtimestamp(timestamp=local_blob_file_path.stat().st_mtime)
-            if local_mtime <= info["mtime"]:
+            if local_mtime < info["mtime"]:
                 local_checksum = local_blob_id_to_checksum.get(blob_id, None)
                 remote_checksum = remote_blob_id_to_checksum.get(blob_id, None)
 
@@ -126,7 +126,7 @@ def update_manifest() -> None:
                 blobs_to_remove[local_blob_file_path] = 180
 
                 blob_ids_to_update.append(blob_id)
-            else:
+            elif local_size != info["size"]:
                 problematic_blob_ids[blob_id] = (
                     f"Local size ({local_size}) is greater than remote size ({info['size']}), "
                     f"but mtime ({local_mtime}) is older ({info['mtime']})."
