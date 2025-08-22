@@ -74,8 +74,10 @@ def update_manifest(limit: int | None = None) -> None:
         blob_ids_to_update = []
         blobs_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive/blobs")
         limit = limit or len(remote_blob_id_to_info)
+        start_time = time.time()
+        max_time = 60 * 60 * 10  # Max 5 hours
         for counter, (blob_id, info) in enumerate(remote_blob_id_to_info.items()):
-            if counter >= limit:
+            if counter >= limit or time.time() - start_time > max_time:
                 return
 
             local_blob_file_path = blobs_directory / blob_id[:3] / blob_id[3:6] / blob_id
