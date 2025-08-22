@@ -104,6 +104,8 @@ def update_manifest(limit: int | None = None) -> None:
                     print(f"Calculating checksum for blob ID {blob_id} due to mtime mismatch.")
                     local_checksum = _calculate_checksum(file_path=local_blob_file_path)
                     local_blob_id_to_checksum[blob_id] = local_checksum
+                    with local_checksums_file_path.open(mode="a") as file_stream:
+                        file_stream.write(f"{blob_id}: {local_checksum}\n")
 
                 # Case 2a: Local content does not match remote - mark local copy for removal and download from remote
                 if local_checksum != remote_checksum:
@@ -161,6 +163,8 @@ def update_manifest(limit: int | None = None) -> None:
                 print(f"Calculating checksum for blob ID {blob_id}.")
                 local_checksum = _calculate_checksum(file_path=local_blob_file_path)
                 local_blob_id_to_checksum[blob_id] = local_checksum
+                with local_checksums_file_path.open(mode="a") as file_stream:
+                    file_stream.write(f"{blob_id}: {local_checksum}\n")
 
             if local_checksum != remote_checksum:
                 print(f"REMOVE: Checksum mismatch for blob ID {blob_id}.")
@@ -172,9 +176,6 @@ def update_manifest(limit: int | None = None) -> None:
     finally:
         blobs_to_update_file_path = manifests_directory / "blobs_to_update.txt"
         blobs_to_update_file_path.write_text("\n".join(blob_ids_to_update))
-
-        with local_checksums_file_path.open(mode="w") as file_stream:
-            json.dump(obj=local_blob_id_to_checksum, fp=file_stream, indent=1)
 
         with problematic_blob_ids_file_path.open(mode="w") as file_stream:
             yaml.dump(data=problematic_blob_ids, stream=file_stream, sort_keys=False)
