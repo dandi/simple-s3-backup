@@ -239,6 +239,25 @@ def _load_data(use_cache: bool = True) -> dict:
             outer_directory_to_local_size[location] = local_size_in_bytes
             outer_directory_to_local_object_count[location] = local_object_count
 
+        # Update blobs/ with object count from second partition
+        other_blobs_backup_directory = pathlib.Path("/orcd/data/dandi/002/s3dandiarchive/blobs")
+        _, local_object_count = _get_local_size_in_bytes_and_object_count(path=other_blobs_backup_directory)
+        outer_directory_to_local_object_count[location] += local_object_count
+
+        # Local pathlib st_size method reports larger than accurate amounts for blobs only...
+        # Still unsure why...
+        # TODO: investigate
+        # For now just override with du
+        local_du_command = f"du -B1 {backup_directory}/blobs/"
+        local_du_output = _deploy_subprocess(command=local_du_command)
+        local_blob_size_in_bytes = int(local_du_output.split("\t")[0])
+
+        local_du_command = f"du -B1 {other_blobs_backup_directory}"
+        local_du_output = _deploy_subprocess(command=local_du_command)
+        other_blob_size_in_bytes = int(local_du_output.split("\t")[0])
+
+        outer_directory_to_local_size["blobs/"] = local_blob_size_in_bytes + other_blob_size_in_bytes
+
         cache_data = {
             "partition_001_used": partition_001_used,
             "partition_001_total": partition_001_total,
