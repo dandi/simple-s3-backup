@@ -1,5 +1,6 @@
 import pathlib
 
+from ._globals import BLOBS_TASK_ID_TO_PARTITION
 from ._utils import _deploy_subprocess
 
 
@@ -23,7 +24,8 @@ def backup_dandi_nonblobs() -> None:
 
 
 def backup_dandi_blobs(task_id: int) -> None:
-    blobs_backup_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive/blobs")
+    partition = BLOBS_TASK_ID_TO_PARTITION[task_id]
+    blobs_backup_directory = pathlib.Path(f"/orcd/data/dandi/{partition}/s3dandiarchive/blobs")
 
     top_blob_hexcode = f"{task_id:01x}"
     for sub_blob_hexcode_1 in range(16):
