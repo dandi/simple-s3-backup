@@ -60,6 +60,7 @@ def update_display(use_cache: bool = True) -> None:
 
     padding = (5, 30)
     readme_lines += json_to_markdown_table(json_table=disk_space_json, padding=padding)
+    readme_lines += ["", "", ""]
 
     content_json = {
         "subtitle": "Content",
