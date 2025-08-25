@@ -1,4 +1,5 @@
 import collections
+import datetime
 import json
 import math
 import pathlib
@@ -14,6 +15,11 @@ def update_display(use_cache: bool = True) -> None:
     """
     data = _load_data(use_cache=use_cache)
 
+    partition_001_used = data["partition_001_used"]
+    partition_001_total = data["partition_001_total"]
+    partition_002_used = data["partition_002_used"]
+    partition_002_total = data["partition_002_total"]
+
     outer_directory_to_remote_size = data["outer_directory_to_remote_size"]
     outer_directory_to_remote_object_count = data["outer_directory_to_remote_object_count"]
     outer_directory_to_local_size = data["outer_directory_to_local_size"]
@@ -22,43 +28,72 @@ def update_display(use_cache: bool = True) -> None:
     outer_ls_locations = list(outer_directory_to_remote_size.keys())
     outer_ls_locations.sort(key=lambda path: (not path.endswith("/"), path))
 
-    today = _get_today()
-    readme_json = {
-        "title": "DANDI Backup Status",
-        "headers": [
-            f"Current status of S3 bucket backup of the DANDI Archive' as of {today.replace('-', '/')}.",
-        ],
+    now = datetime.datetime.now().isoformat()
+    readme_lines = [
+        "# DANDI Backup Status",
+        "",
+        f"Current status of S3 bucket backup of the DANDI Archive as of: {now}",
+        "",
+    ]
+
+    disk_space_json = {
+        "subtitle": "Partition Disk Space",
+        "data": {
+            "Partition": ["001", "002"],
+            "Used / Total (%)": [
+                (
+                    f"{_human_readable_size(size_in_bytes=partition_001_used)} / "
+                    f"{_human_readable_size(size_in_bytes=partition_001_total)} "
+                    f"({_format_ratio(numerator=partition_001_used, denominator=partition_001_total)})"
+                ),
+                (
+                    f"{_human_readable_size(size_in_bytes=partition_002_used)} / "
+                    f"{_human_readable_size(size_in_bytes=partition_002_total)} "
+                    f"({_format_ratio(numerator=partition_002_used, denominator=partition_002_total)})"
+                ),
+            ],
+        },
+    }
+    disk_space_json_file_path = pathlib.Path("/orcd") / "data" / "dandi" / "001" / "backup-status" / "disk.json"
+    with disk_space_json_file_path.open(mode="w") as file_stream:
+        json.dump(obj=disk_space_json, fp=file_stream)
+
+    padding = (5, 30)
+    readme_lines += json_to_markdown_table(json_table=disk_space_json, padding=padding)
+
+    content_json = {
+        "subtitle": "Content",
         "tails": ["[^1]: Reported percentage may exceed 100% due to delayed garbage collection."],
         "data": {
             "Location": outer_ls_locations,
             "Size (Local / Remote)": [
-                f"{_human_readable_size(size_in_bytes=(local_size:=outer_directory_to_local_size[location]))} / "
-                f"{_human_readable_size(size_in_bytes=(remote_size:=outer_directory_to_remote_size[location]))} "
+                f"{_human_readable_size(size_in_bytes=(local_size := outer_directory_to_local_size[location]))} / "
+                f"{_human_readable_size(size_in_bytes=(remote_size := outer_directory_to_remote_size[location]))} "
                 f"({_format_ratio(numerator=local_size, denominator=remote_size)})"
                 for location in outer_ls_locations
             ],
             "Number of Objects (Local / Remote)[^1]": [
-                f"{(local_count:=outer_directory_to_local_object_count[location])} / "
-                f"{(remote_count:=outer_directory_to_remote_object_count[location])} "
+                f"{(local_count := outer_directory_to_local_object_count[location])} / "
+                f"{(remote_count := outer_directory_to_remote_object_count[location])} "
                 f"({_format_ratio(numerator=local_count, denominator=remote_count)})"
                 for location in outer_ls_locations
             ],
         },
     }
-
-    readme_json_file_path = pathlib.Path("/orcd") / "data" / "dandi" / "001" / "backup-status" / "readme.json"
-    with readme_json_file_path.open(mode="w") as file_stream:
-        json.dump(obj=readme_json, fp=file_stream)
+    content_json_file_path = pathlib.Path("/orcd") / "data" / "dandi" / "001" / "backup-status" / "content.json"
+    with content_json_file_path.open(mode="w") as file_stream:
+        json.dump(obj=content_json, fp=file_stream)
 
     padding = (20, 40, 40)
-    readme_content = json_to_markdown_table(json_table=readme_json, padding=padding)
+    readme_lines += json_to_markdown_table(json_table=content_json, padding=padding)
 
+    readme = "\n".join(readme_lines)
     readme_file_path = pathlib.Path("/orcd") / "data" / "dandi" / "001" / "backup-status" / "README.md"
     with readme_file_path.open(mode="w") as file_stream:
-        file_stream.write(readme_content)
+        file_stream.write(readme)
 
 
-def json_to_markdown_table(json_table: dict, *, padding: tuple[int, ...] | None = None) -> str:
+def json_to_markdown_table(json_table: dict, *, padding: tuple[int, ...] | None = None) -> list[str]:
     """
     Convert a JSON object to a Markdown table.
 
@@ -76,6 +111,7 @@ def json_to_markdown_table(json_table: dict, *, padding: tuple[int, ...] | None 
     --------
     json_table = {
         "title": "My Example Table",
+        "subtitle": "This is a subtitle.",
         "headers": ["My header 1.", "My header 2."],
         "tails": ["This is a tail.", "This is another tail."],
         "data": {
@@ -87,6 +123,8 @@ def json_to_markdown_table(json_table: dict, *, padding: tuple[int, ...] | None 
 
     print(json_to_markdown_table(json_table=json_table))
     >>> # My Example Table
+
+    # This is a subtitle.
 
     My header 1.
     My header 2.
@@ -101,6 +139,7 @@ def json_to_markdown_table(json_table: dict, *, padding: tuple[int, ...] | None 
     This is another tail.
     """
     title = json_table.get("title", None)
+    subtitle = json_table.get("subtitle", None)
     headers = json_table.get("headers", None)
     tails = json_table.get("tails", None)
 
@@ -117,6 +156,8 @@ def json_to_markdown_table(json_table: dict, *, padding: tuple[int, ...] | None 
     markdown_table = []
     if title is not None:
         markdown_table += [f"# {title}", ""]
+    if subtitle is not None:
+        markdown_table += [f"## {subtitle}", ""]
     if headers is not None:
         markdown_table += headers
         markdown_table += [""]
@@ -134,7 +175,7 @@ def json_to_markdown_table(json_table: dict, *, padding: tuple[int, ...] | None 
         markdown_table += [""]
         markdown_table += tails
 
-    return "\n".join(markdown_table)
+    return markdown_table
 
 
 def _load_data(use_cache: bool = True) -> dict:
@@ -152,6 +193,20 @@ def _load_data(use_cache: bool = True) -> dict:
     daily_cache_file_path = cache_directory / filename
 
     if use_cache is False or not daily_cache_file_path.exists():
+        df_command_001 = "df -B1 /orcd/data/dandi/001"
+        df_output_001 = _deploy_subprocess(command=df_command_001)
+        df_output_001_lines = df_output_001.splitlines()
+        df_values_001_split = df_output_001_lines[1].split(" ")
+        partition_001_used = int(df_values_001_split[2])
+        partition_001_total = int(df_values_001_split[1])
+
+        df_command_002 = "df -B1 /orcd/data/dandi/002"
+        df_output_002 = _deploy_subprocess(command=df_command_002)
+        df_output_002_lines = df_output_002.splitlines()
+        df_values_002_split = df_output_002_lines[1].split(" ")
+        partition_002_used = int(df_values_002_split[2])
+        partition_002_total = int(df_values_002_split[1])
+
         outer_ls_command = "s5cmd ls s3://dandiarchive"
         outer_ls_output = _deploy_subprocess(command=outer_ls_command)
 
@@ -185,6 +240,10 @@ def _load_data(use_cache: bool = True) -> dict:
             outer_directory_to_local_object_count[location] = local_object_count
 
         cache_data = {
+            "partition_001_used": partition_001_used,
+            "partition_001_total": partition_001_total,
+            "partition_002_used": partition_002_used,
+            "partition_002_total": partition_002_total,
             "outer_directory_to_remote_size": outer_directory_to_remote_size,
             "outer_directory_to_remote_object_count": outer_directory_to_remote_object_count,
             "outer_directory_to_local_size": outer_directory_to_local_size,

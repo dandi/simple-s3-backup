@@ -1,9 +1,8 @@
 #!/bin/bash
 
 #SBATCH --partition mit_normal
-#SBATCH --cpus-per-task 1
 #SBATCH --output /dev/null
-#SBATCH --array 0-10
+#SBATCH --array 0-15
 
 source /etc/profile.d/modules.sh  # When run via crontab, this is needed to load the modules
 module load miniforge
