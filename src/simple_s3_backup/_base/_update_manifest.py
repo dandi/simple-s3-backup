@@ -12,7 +12,18 @@ from ._utils import _deploy_subprocess
 
 
 def update_manifest(limit: int | None = None) -> None:
-    """Update the manifest file."""
+    """
+    Update the manifest file.
+
+    Case 1: Local copy of blob on remote does not exist - always download
+    Case 2: Local copy of blob exists, but mtime on remote is newer
+        Case 2a: Local content does not match remote - mark local copy for removal and download from remote
+        Case 2b: It is a question why the mtimes differ so add this to the problematic blob list
+    Case 3: Local mtime is after remote mtime, but size differs
+        Case 3a: If local size is less than remote, this can only mean the attempt to download the asset failed
+        Case 3b: If local size is greater than remote, then something is wrong so add it to the problem list
+    Case 4: Local mtime is after remote mtime, size matches, so ensure the checksums match
+    """
     manifests_directory = pathlib.Path("/orcd/data/dandi/001/manifests")
     manifests_directory.mkdir(exist_ok=True)
 
@@ -75,10 +86,10 @@ def update_manifest(limit: int | None = None) -> None:
         blobs_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive/blobs")
         limit = limit or len(remote_blob_id_to_info)
         start_time = time.time()
-        max_time = 60 * 60 * 5  # Max 5 hours
+        max_time = 60 * 60 * 3  # Max 3 hours
         for counter, (blob_id, info) in enumerate(remote_blob_id_to_info.items()):
             if counter >= limit or time.time() - start_time > max_time:
-                return
+                break
 
             local_blob_file_path = blobs_directory / blob_id[:3] / blob_id[3:6] / blob_id
 
@@ -128,8 +139,8 @@ def update_manifest(limit: int | None = None) -> None:
                 continue
 
             # Case 3: Local mtime is after remote mtime, but size differs
-            # If local size is less than remote, this can only mean the first attempt to download the asset failed
-            # If local size is greater than remote, then something is very wrong so add it to the problematic blob list
+            # Case 3a: If local size is less than remote, this can only mean the attempt to download the asset failed
+            # Case 3b: If local size is greater than remote, then something is wrong so add it to the problem list
             local_size = local_blob_file_path.stat().st_size
             if local_size < info["size"]:
                 print(f"REMOVE: Local blob ID {blob_id} size ({local_size}) is less than remote size ({info['size']}).")
@@ -139,7 +150,7 @@ def update_manifest(limit: int | None = None) -> None:
                 blobs_to_remove[local_blob_file_path] = 180
 
                 blob_ids_to_update.append(blob_id)
-            elif local_size != info["size"]:
+            elif local_size > info["size"]:
                 message = (
                     f"PROBLEM: Local size ({local_size}) is greater than remote size ({info['size']}), "
                     f"but mtime ({local_mtime}) is older ({info['mtime']})."
