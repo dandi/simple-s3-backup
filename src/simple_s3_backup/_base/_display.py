@@ -249,11 +249,11 @@ def _load_data(use_cache: bool = True) -> dict:
         # Still unsure why...
         # TODO: investigate
         # For now just override with du
-        local_du_command = f"du -B1 {backup_directory}/blobs/"
+        local_du_command = "du -sB1 /orcd/data/dandi/001/s3dandiarchive/blobs/"
         local_du_output = _deploy_subprocess(command=local_du_command)
         local_blob_size_in_bytes = int(local_du_output.split("\t")[0])
 
-        local_du_command = f"du -B1 {other_blobs_backup_directory}"
+        local_du_command = "du -sB1 /orcd/data/dandi/002/s3dandiarchive/blobs/"
         local_du_output = _deploy_subprocess(command=local_du_command)
         other_blob_size_in_bytes = int(local_du_output.split("\t")[0])
 
