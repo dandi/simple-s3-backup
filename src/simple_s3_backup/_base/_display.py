@@ -3,6 +3,7 @@ import datetime
 import json
 import math
 import pathlib
+import zoneinfo
 
 import yaml
 
@@ -28,11 +29,12 @@ def update_display(use_cache: bool = True) -> None:
     outer_ls_locations = list(outer_directory_to_remote_size.keys())
     outer_ls_locations.sort(key=lambda path: (not path.endswith("/"), path))
 
-    now = datetime.datetime.now().isoformat()
+    now = datetime.datetime.now().astimezone(zoneinfo.ZoneInfo(key="America/New_York")).isoformat()
     readme_lines = [
         "# DANDI Backup Status",
         "",
-        f"Current status of S3 bucket backup of the DANDI Archive as of: {now}",
+        "Current status of S3 bucket backup of the DANDI Archive." "",
+        f"Last update: {now}",
         "",
     ]
 
