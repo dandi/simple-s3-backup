@@ -19,6 +19,6 @@ for x in {0..1}; do
   s5cmd --dry-run cp --if-source-newer s3://dandiarchive/blobs/$x* . | awk '{print $3}' | sort > diffs/$x/newer_on_bucket.txt
 done
 s3backup dandi dashboard
-git add README.md
+git add .
 git commit --message "update"
 git push
