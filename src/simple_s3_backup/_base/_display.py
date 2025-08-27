@@ -33,16 +33,17 @@ def update_display(use_cache: bool = True) -> None:
     readme_lines = [
         "# DANDI Backup Status",
         "",
-        "Current status of S3 bucket backup of the DANDI Archive." "",
+        "Current status of S3 bucket backup of the DANDI Archive.",
+        "",
         f"Last update: {now}",
         "",
     ]
 
     disk_space_json = {
-        "subtitle": "Partition Disk Space",
+        "subtitle": "Disk Space",
         "data": {
             "Partition": ["001", "002"],
-            "Used / Total (%)": [
+            "Size (Used / Total)": [
                 (
                     f"{_human_readable_size(size_in_bytes=partition_001_used)} / "
                     f"{_human_readable_size(size_in_bytes=partition_001_total)} "
