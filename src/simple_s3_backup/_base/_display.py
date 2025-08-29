@@ -57,7 +57,7 @@ def update_display(use_cache: bool = True) -> None:
             ],
         },
     }
-    disk_space_json_file_path = pathlib.Path("/orcd") / "data" / "dandi" / "001" / "backup-status" / "disk.json"
+    disk_space_json_file_path = pathlib.Path("/orcd/data/dandi/001/backup-status/data/disk.json")
     with disk_space_json_file_path.open(mode="w") as file_stream:
         json.dump(obj=disk_space_json, fp=file_stream)
 
@@ -84,7 +84,7 @@ def update_display(use_cache: bool = True) -> None:
             ],
         },
     }
-    content_json_file_path = pathlib.Path("/orcd") / "data" / "dandi" / "001" / "backup-status" / "content.json"
+    content_json_file_path = pathlib.Path("/orcd/data/dandi/001/backup-status/data/content.json")
     with content_json_file_path.open(mode="w") as file_stream:
         json.dump(obj=content_json, fp=file_stream)
 
