@@ -92,7 +92,7 @@ def update_display(use_cache: bool = True) -> None:
     readme_lines += json_to_markdown_table(json_table=content_json, padding=padding)
 
     readme = "\n".join(readme_lines)
-    readme_file_path = pathlib.Path("/orcd") / "data" / "dandi" / "001" / "backup-status" / "README.md"
+    readme_file_path = pathlib.Path("/orcd/data/dandi/001/backup-status/README.md")
     with readme_file_path.open(mode="w") as file_stream:
         file_stream.write(readme)
 
