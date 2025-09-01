@@ -36,3 +36,18 @@ def backup_dandi_blobs(task_id: int) -> None:
             command = f"s5cmd cp --if-size-differ --if-source-newer {source} {destination}"
             print(command)
             _deploy_subprocess(command=command)
+
+
+def backup_dandi_zarr(task_id: int) -> None:
+    top_zarr_hexcode = f"{task_id:02x}"
+    partition_key = top_zarr_hexcode[0]
+    partition = BLOBS_TASK_ID_TO_PARTITION[partition_key]
+    zarr_backup_directory = pathlib.Path(f"/orcd/data/dandi/{partition}/s3dandiarchive/zarr")
+
+    for sub_zarr_hexcode_1 in range(16):
+        zarr_subdirectory = f"{top_zarr_hexcode}{sub_zarr_hexcode_1:01x}"
+        source = f"s3://dandiarchive/zarr/{zarr_subdirectory}*"
+        destination = zarr_backup_directory  # No nested structure yet
+        command = f"s5cmd cp --if-size-differ --if-source-newer {source} {destination}"
+        print(command)
+        _deploy_subprocess(command=command)

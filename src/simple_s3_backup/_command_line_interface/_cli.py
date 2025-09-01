@@ -1,6 +1,6 @@
 import click
 
-from .._base import backup_dandi_blobs, backup_dandi_nonblobs, update_display, update_manifest
+from .._base import backup_dandi_blobs, backup_dandi_nonblobs, backup_dandi_zarr, update_display, update_manifest
 
 
 # s3backup
@@ -50,6 +50,16 @@ def _s3backup_dandi_blobs(task_id: int) -> None:
     Backup DANDI blob directories correspond to the `task_id`.
     """
     backup_dandi_blobs(task_id=task_id)
+
+
+# s3backup dandi zarr <int>
+@_s3backup_dandi.command(name="zarr")
+@click.argument("task_id", type=int)
+def _s3backup_dandi_zarr(task_id: int) -> None:
+    """
+    Backup DANDI zarr directories correspond to the `task_id`.
+    """
+    backup_dandi_zarr(task_id=task_id)
 
 
 # s3backup dandi dashboard
