@@ -40,7 +40,7 @@ def backup_dandi_blobs(task_id: int) -> None:
 
 def backup_dandi_zarr(task_id: int) -> None:
     top_zarr_hexcode = f"{task_id:02x}"
-    partition_key = top_zarr_hexcode[0]
+    partition_key = int(top_zarr_hexcode[0], 16)
     partition = BLOBS_TASK_ID_TO_PARTITION[partition_key]
     zarr_backup_directory = pathlib.Path(f"/orcd/data/dandi/{partition}/s3dandiarchive/zarr")
 
