@@ -20,7 +20,7 @@ def backup_dandi_nonblobs() -> None:
         destination = f"{backup_directory}/{location}"
         command = f"s5cmd cp --if-size-differ --if-source-newer s3://dandiarchive/{source} {destination}"
         print(command)
-        _deploy_subprocess(command=command)
+        _deploy_subprocess(command=command, ignore_errors=True)
 
 
 def backup_dandi_blobs(task_id: int) -> None:
@@ -35,7 +35,7 @@ def backup_dandi_blobs(task_id: int) -> None:
             destination = f"{blobs_backup_directory}/{blob_subdirectory}/"
             command = f"s5cmd cp --if-size-differ --if-source-newer {source} {destination}"
             print(command)
-            _deploy_subprocess(command=command)
+            _deploy_subprocess(command=command, ignore_errors=True)
 
 
 def backup_dandi_zarr(task_id: int) -> None:
@@ -50,4 +50,4 @@ def backup_dandi_zarr(task_id: int) -> None:
         destination = zarr_backup_directory  # No nested structure yet
         command = f"s5cmd cp --if-size-differ --if-source-newer {source} {destination}"
         print(command)
-        _deploy_subprocess(command=command)
+        _deploy_subprocess(command=command, ignore_errors=True)
