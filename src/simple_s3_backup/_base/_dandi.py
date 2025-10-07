@@ -1,6 +1,6 @@
 import pathlib
 
-from ._globals import BLOBS_TASK_ID_TO_PARTITION
+from ._globals import BLOBS_HEAD_TO_PARTITION, ZARR_HEAD_TO_PARTITION
 from ._utils import _deploy_subprocess
 
 
@@ -24,7 +24,7 @@ def backup_dandi_nonblobs() -> None:
 
 
 def backup_dandi_blobs(task_id: int) -> None:
-    partition = BLOBS_TASK_ID_TO_PARTITION[task_id]
+    partition = BLOBS_HEAD_TO_PARTITION[task_id]
     blobs_backup_directory = pathlib.Path(f"/orcd/data/dandi/{partition}/s3dandiarchive/blobs")
 
     top_blob_hexcode = f"{task_id:01x}"
@@ -41,7 +41,7 @@ def backup_dandi_blobs(task_id: int) -> None:
 def backup_dandi_zarr(task_id: int) -> None:
     top_zarr_hexcode = f"{task_id:02x}"
     partition_key = int(top_zarr_hexcode[0], 16)
-    partition = BLOBS_TASK_ID_TO_PARTITION[partition_key]
+    partition = ZARR_HEAD_TO_PARTITION[partition_key]
     zarr_backup_directory = pathlib.Path(f"/orcd/data/dandi/{partition}/s3dandiarchive/zarr")
 
     for sub_zarr_hexcode_1 in range(16):
