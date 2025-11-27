@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --partition mit_normal
+#SBATCH --partition mit_data_transfer
 #SBATCH --output /dev/null
 #SBATCH --array 0-15
 
