@@ -1,6 +1,6 @@
 #!/bin/bash
 
-#SBATCH --partition mit_data_transfer
+#SBATCH --partition mit_normal
 #SBATCH --output /dev/null
 
 source /etc/profile.d/modules.sh  # When run via crontab, this is needed to load the modules
