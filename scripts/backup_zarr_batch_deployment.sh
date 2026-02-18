@@ -1,8 +1,10 @@
 #!/bin/bash
-
-#SBATCH --partition mit_normal
+#SBATCH --partition mit_preemptable 
 #SBATCH --output /dev/null
-#SBATCH --array 0-5
+#SBATCH --array 0-255
+#SBATCH --mem=1GB
+#SBATCH --cpus-per-task 1
+#SBATCH --time=12:00:00
 
 source /etc/profile.d/modules.sh  # When run via crontab, this is needed to load the modules
 module load miniforge
