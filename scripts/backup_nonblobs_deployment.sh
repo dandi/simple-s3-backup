@@ -10,4 +10,4 @@ module load miniforge
 
 conda activate /orcd/data/dandi/001/s3-backup-environment
 
-s3backup dandi nonblobs $SLURM_ARRAY_TASK_ID
+flock -n /orcd/data/dandi/001/flocks/backup_nonblobs_batch.lock s3backup dandi nonblobs $SLURM_ARRAY_TASK_ID
