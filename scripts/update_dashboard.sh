@@ -10,7 +10,7 @@ conda activate /orcd/data/dandi/001/s3-backup-environment
 
 cd /orcd/data/dandi/001/backup-status
 git pull
-s3backup dandi dashboard
+flock -n /orcd/data/dandi/001/flocks/update_dashboard.lock sbatch s3backup dandi dashboard
 git add .
 git commit --message "update"
 git push
