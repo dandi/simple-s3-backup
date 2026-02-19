@@ -11,4 +11,4 @@ module load miniforge
 
 conda activate /orcd/data/dandi/001/s3-backup-environment
 
-s3backup dandi blobs $SLURM_ARRAY_TASK_ID
+flock -n /orcd/data/dandi/001/flocks/backup_blobs_batch_$SLURM_ARRAY_TASK_ID.lock s3backup dandi blobs $SLURM_ARRAY_TASK_ID
