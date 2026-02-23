@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --partition mit_preemptable 
+#SBATCH --partition mit_preemptable
 #SBATCH --output /dev/null
 #SBATCH --array 0-255
 #SBATCH --mem=1GB
