@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --partition mit_preemptable 
+#SBATCH --partition mit_preemptable
 #SBATCH --output /dev/null
 #SBATCH --mem=100MB
 #SBATCH --cpus-per-task 1
