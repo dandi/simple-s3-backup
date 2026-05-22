@@ -1,7 +1,9 @@
 #!/bin/bash
-
-#SBATCH --partition mit_normal
-#SBATCH --output /dev/null
+#SBATCH --job-name=DANDI-Update-Backup-Dashboard
+#SBATCH --mem=1GB
+#SBATCH --cpus-per-task 1
+#SBATCH --partition=mit_preemptable
+#SBATCH --time=12:00:00
 
 source /etc/profile.d/modules.sh  # When run via crontab, this is needed to load the modules
 module load miniforge
