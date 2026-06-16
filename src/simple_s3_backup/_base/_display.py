@@ -29,7 +29,7 @@ def update_display(use_cache: bool = True) -> None:
     outer_ls_locations = list(outer_directory_to_remote_size.keys())
     outer_ls_locations.sort(key=lambda path: (not path.endswith("/"), path))
 
-    now = datetime.datetime.now().astimezone(zoneinfo.ZoneInfo(key="America/New_York")).isoformat()
+    now = datetime.datetime.now().astimezone(zoneinfo.ZoneInfo(key="America/New_York")).strftime("%B %-d, %Y at %I:%M %p ET")
     readme_lines = [
         "# DANDI Backup Status",
         "",
