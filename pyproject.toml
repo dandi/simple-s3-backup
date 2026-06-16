@@ -29,6 +29,7 @@ dependencies = [
     "click",
     "s5cmd",
     "PyYAML",
+    "tabulate2",
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
