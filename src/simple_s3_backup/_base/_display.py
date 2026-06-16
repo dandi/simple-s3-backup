@@ -6,6 +6,7 @@ import pathlib
 import zoneinfo
 
 import yaml
+from tabulate import tabulate
 
 from ._utils import _deploy_subprocess, _get_today
 
@@ -65,8 +66,7 @@ def update_display(use_cache: bool = True) -> None:
     with disk_space_json_file_path.open(mode="w") as file_stream:
         json.dump(obj=disk_space_json, fp=file_stream)
 
-    padding = (5, 30)
-    readme_lines += json_to_markdown_table(json_table=disk_space_json, padding=padding)
+    readme_lines += json_to_markdown_table(json_table=disk_space_json)
     readme_lines += ["", "", ""]
 
     content_json = {
@@ -92,8 +92,7 @@ def update_display(use_cache: bool = True) -> None:
     with content_json_file_path.open(mode="w") as file_stream:
         json.dump(obj=content_json, fp=file_stream)
 
-    padding = (20, 40, 40)
-    readme_lines += json_to_markdown_table(json_table=content_json, padding=padding)
+    readme_lines += json_to_markdown_table(json_table=content_json)
 
     readme = "\n".join(readme_lines)
     readme_file_path = pathlib.Path("/orcd/data/dandi/001/backup-status/README.md")
@@ -101,50 +100,20 @@ def update_display(use_cache: bool = True) -> None:
         file_stream.write(readme)
 
 
-def json_to_markdown_table(json_table: dict, *, padding: tuple[int, ...] | None = None) -> list[str]:
+def json_to_markdown_table(json_table: dict) -> list[str]:
     """
-    Convert a JSON object to a Markdown table.
+    Convert a JSON object to a Markdown table using tabulate2.
 
     Parameters
     ----------
     json_table : dict
-        The JSON data to convert.
+        The JSON data to convert. Supports optional keys: "title", "subtitle", "headers", "tails",
+        and required key "data" (dict mapping column names to lists of values).
 
     Returns
     -------
-    str
-        A string representing the Markdown table.
-
-    Examples
-    --------
-    json_table = {
-        "title": "My Example Table",
-        "subtitle": "This is a subtitle.",
-        "headers": ["My header 1.", "My header 2."],
-        "tails": ["This is a tail.", "This is another tail."],
-        "data": {
-             "Name": ["Alice", "Bob", "Charlie"],
-             "Age": [30, 25, 35],
-             "City": ["New York", "Los Angeles", "Chicago"]
-         }
-    }
-
-    print(json_to_markdown_table(json_table=json_table))
-    >>> # My Example Table
-
-    # This is a subtitle.
-
-    My header 1.
-    My header 2.
-
-    | Name    | Age | City         |
-    | :---: | :---: | :----: |
-    | Alice   | 30  | New York     |
-    | Bob     | 25  | Los Angeles  |
-    | Charlie | 35  | Chicago      |
-
-    This is a tail.
-    This is another tail.
+    list[str]
+        Lines representing the Markdown table with optional title, subtitle, headers, and tails.
     """
     title = json_table.get("title", None)
     subtitle = json_table.get("subtitle", None)
@@ -153,13 +122,7 @@ def json_to_markdown_table(json_table: dict, *, padding: tuple[int, ...] | None 
 
     data = json_table["data"]
     column_names = list(data.keys())
-    rows: list[list[str, ...]] = [list(row) for row in zip(*(data[column_name] for column_name in column_names))]
-
-    if padding is None:
-        padding = tuple(
-            max(len(column_name), max(len(str(value)) for value in [column_name] + [row[column_index] for row in rows]))
-            for column_index, column_name in enumerate(column_names)
-        )
+    rows = list(zip(*(data[column_name] for column_name in column_names)))
 
     markdown_table = []
     if title is not None:
@@ -169,16 +132,10 @@ def json_to_markdown_table(json_table: dict, *, padding: tuple[int, ...] | None 
     if headers is not None:
         markdown_table += headers
         markdown_table += [""]
-    formatted_column_names = [
-        f"{column_name:<{padding[column_index]}}" for column_index, column_name in enumerate(column_names)
-    ]
-    markdown_table += ["| " + " | ".join(formatted_column_names) + " |"]
-    formatted_dashes = [":" + "-" * (padding[column_index] - 2) + ":" for column_index in range(len(column_names))]
-    markdown_table += ["| " + " | ".join(formatted_dashes) + " |"]
-    for row in rows:
-        markdown_table += [
-            "| " + " | ".join(f"{value:<{padding[column_index]}}" for column_index, value in enumerate(row)) + " |"
-        ]
+
+    table_str = tabulate(rows, headers=column_names, tablefmt="github")
+    markdown_table += table_str.splitlines()
+
     if tails is not None:
         markdown_table += [""]
         markdown_table += tails
