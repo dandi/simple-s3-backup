@@ -6,7 +6,7 @@ import pathlib
 import zoneinfo
 
 import yaml
-from tabulate import tabulate
+from tabulate2 import tabulate
 
 from ._utils import _deploy_subprocess, _get_today
 
