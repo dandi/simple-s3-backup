@@ -5,7 +5,7 @@ from ._utils import _deploy_subprocess
 
 
 def backup_dandi_nonblobs() -> None:
-    backup_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive")
+    backup_directory = pathlib.Path("/orcd/data/dandi/001/backup/s3dandiarchive")
 
     ls_command = "s5cmd ls s3://dandiarchive"
     ls_output = _deploy_subprocess(command=ls_command, ignore_errors=True)
