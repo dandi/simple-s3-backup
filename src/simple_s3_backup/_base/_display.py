@@ -62,7 +62,7 @@ def update_display(use_cache: bool = True) -> None:
             ],
         },
     }
-    disk_space_json_file_path = pathlib.Path("/orcd/data/dandi/001/backup-status/data/disk.json")
+    disk_space_json_file_path = pathlib.Path("/orcd/data/dandi/001/backup/backup-status/data/disk.json")
     with disk_space_json_file_path.open(mode="w") as file_stream:
         json.dump(obj=disk_space_json, fp=file_stream)
 
@@ -88,14 +88,14 @@ def update_display(use_cache: bool = True) -> None:
             ],
         },
     }
-    content_json_file_path = pathlib.Path("/orcd/data/dandi/001/backup-status/data/content.json")
+    content_json_file_path = pathlib.Path("/orcd/data/dandi/001/backup/backup-status/data/content.json")
     with content_json_file_path.open(mode="w") as file_stream:
         json.dump(obj=content_json, fp=file_stream)
 
     readme_lines += json_to_markdown_table(json_table=content_json)
 
     readme = "\n".join(readme_lines)
-    readme_file_path = pathlib.Path("/orcd/data/dandi/001/backup-status/README.md")
+    readme_file_path = pathlib.Path("/orcd/data/dandi/001/backup/backup-status/README.md")
     with readme_file_path.open(mode="w") as file_stream:
         file_stream.write(readme)
 
@@ -144,7 +144,7 @@ def json_to_markdown_table(json_table: dict) -> list[str]:
 
 
 def _load_data(use_cache: bool = True) -> dict:
-    backup_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive")
+    backup_directory = pathlib.Path("/orcd/data/dandi/001/backup/s3dandiarchive")
     cache_directory = backup_directory.parent / "display_cache"
     cache_directory.mkdir(exist_ok=True)
 
@@ -213,7 +213,7 @@ def _load_data(use_cache: bool = True) -> dict:
         # Still unsure why...
         # TODO: investigate
         # For now just override with du
-        local_du_command = "du -sB1 /orcd/data/dandi/001/s3dandiarchive/blobs/"
+        local_du_command = "du -sB1 /orcd/data/dandi/001/backup/s3dandiarchive/blobs/"
         local_du_output = _deploy_subprocess(command=local_du_command)
         local_blob_size_in_bytes = int(local_du_output.split("\t")[0])
 
