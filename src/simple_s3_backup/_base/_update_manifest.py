@@ -83,7 +83,7 @@ def update_manifest(limit: int | None = None) -> None:
 
     try:
         blob_ids_to_update = []
-        blobs_directory = pathlib.Path("/orcd/data/dandi/001/backup/s3dandiarchive/blobs")
+        blobs_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive/blobs")
         limit = limit or len(remote_blob_id_to_info)
         start_time = time.time()
         max_time = 60 * 60 * 3  # Max 3 hours
