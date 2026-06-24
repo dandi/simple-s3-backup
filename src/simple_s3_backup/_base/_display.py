@@ -112,14 +112,10 @@ def _build_blob_partition_json() -> dict:
     partitions = sorted(partition_to_hex_digits)
     return {
         "subtitle": "Blob Partition Separation",
-        "headers": [
-            "Blobs are distributed across partitions based on the first hex digit of each blob's head hash."
-        ],
+        "headers": ["Blobs are distributed across partitions based on the first hex digit of each blob's head hash."],
         "data": {
             "Partition": partitions,
-            "Head Hash Digits (hex)": [
-                ", ".join(f"`{d}`" for d in partition_to_hex_digits[p]) for p in partitions
-            ],
+            "Head Hash Digits (hex)": [", ".join(f"`{d}`" for d in partition_to_hex_digits[p]) for p in partitions],
         },
     }
 
