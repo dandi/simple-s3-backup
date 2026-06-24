@@ -8,6 +8,7 @@ import zoneinfo
 import yaml
 from tabulate2 import tabulate
 
+from ._globals import BLOBS_HEAD_TO_PARTITION
 from ._utils import _deploy_subprocess, _get_today
 
 
@@ -94,10 +95,29 @@ def update_display(use_cache: bool = True) -> None:
 
     readme_lines += json_to_markdown_table(json_table=content_json)
 
+    readme_lines += ["", "", ""]
+    readme_lines += json_to_markdown_table(json_table=_build_blob_partition_json())
+
     readme = "\n".join(readme_lines)
     readme_file_path = pathlib.Path("/orcd/data/dandi/001/backup/backup-status/README.md")
     with readme_file_path.open(mode="w") as file_stream:
         file_stream.write(readme)
+
+
+def _build_blob_partition_json() -> dict:
+    partition_to_hex_digits = collections.defaultdict(list)
+    for task_id, partition in BLOBS_HEAD_TO_PARTITION.items():
+        partition_to_hex_digits[partition].append(f"{task_id:x}")
+
+    partitions = sorted(partition_to_hex_digits)
+    return {
+        "subtitle": "Blob Partition Separation",
+        "headers": ["Blobs are distributed across partitions based on the first hex digit of each blob's head hash."],
+        "data": {
+            "Partition": partitions,
+            "Head Hash Digits (hex)": [", ".join(f"`{d}`" for d in partition_to_hex_digits[p]) for p in partitions],
+        },
+    }
 
 
 def json_to_markdown_table(json_table: dict) -> list[str]:
