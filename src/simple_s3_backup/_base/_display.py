@@ -144,7 +144,7 @@ def json_to_markdown_table(json_table: dict) -> list[str]:
 
 
 def _load_data(use_cache: bool = True) -> dict:
-    backup_directory = pathlib.Path("/orcd/data/dandi/001/backup/s3dandiarchive")
+    backup_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive")
     cache_directory = backup_directory.parent / "display_cache"
     cache_directory.mkdir(exist_ok=True)
 
