@@ -35,3 +35,24 @@ You can also run the partition check by hand at any time:
 ```bash
 s3backup dandi verify-blobs
 ```
+
+
+# Fixing blob heads stranded on the wrong partition
+
+Before the 001/002 split, heads a-f were backed up into partition `001`; they now route to `002`,
+but `s5cmd cp` never deletes, so the old a-f copies stay behind in `001`. `verify-blobs` reports
+these as `MISPLACED`. To clean them up safely:
+
+```bash
+# 1. Make sure the correct partition holds the data (the nightly backup already does this):
+s3backup dandi blobs <task_id>        # for the affected heads, or just let the array run
+
+# 2. Preview what would be deleted (dry run - deletes nothing):
+s3backup dandi cleanup-misplaced-blobs
+
+# 3. Actually delete the misplaced copies:
+s3backup dandi cleanup-misplaced-blobs --apply
+```
+
+The cleanup only deletes a misplaced sub-directory once the correct partition holds a byte-for-byte
+complete copy, so no data is lost; anything not yet fully copied is reported and skipped.

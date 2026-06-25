@@ -4,6 +4,7 @@ from .._base import (
     backup_dandi_blobs,
     backup_dandi_nonblobs,
     backup_dandi_zarr,
+    cleanup_misplaced_dandi_blobs,
     update_display,
     update_manifest,
     verify_dandi_blobs,
@@ -73,9 +74,26 @@ def _s3backup_dandi_zarr(task_id: int) -> None:
 @_s3backup_dandi.command(name="verify-blobs")
 def _s3backup_dandi_verify_blobs() -> None:
     """
-    Verify that both storage partitions received blob writes; exit non-zero if any did not.
+    Verify each blob head is on its assigned partition and nowhere else; exit non-zero otherwise.
     """
     verify_dandi_blobs()
+
+
+# s3backup dandi cleanup-misplaced-blobs
+@_s3backup_dandi.command(name="cleanup-misplaced-blobs")
+@click.option(
+    "--apply",
+    is_flag=True,
+    default=False,
+    help="Actually delete the misplaced directories. Without this flag the command is a dry run.",
+)
+def _s3backup_dandi_cleanup_misplaced_blobs(apply: bool = False) -> None:
+    """
+    Remove blob heads stranded on the wrong partition (e.g. a-f left in 001 before the 001/002 split).
+
+    Safe by default: a directory is only deleted once the correct partition holds a complete copy.
+    """
+    cleanup_misplaced_dandi_blobs(apply=apply)
 
 
 # s3backup dandi dashboard
