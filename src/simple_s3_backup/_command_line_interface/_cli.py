@@ -1,6 +1,13 @@
 import click
 
-from .._base import backup_dandi_blobs, backup_dandi_nonblobs, backup_dandi_zarr, update_display, update_manifest
+from .._base import (
+    backup_dandi_blobs,
+    backup_dandi_nonblobs,
+    backup_dandi_zarr,
+    update_display,
+    update_manifest,
+    verify_dandi_blobs,
+)
 
 
 # s3backup
@@ -60,6 +67,15 @@ def _s3backup_dandi_zarr(task_id: int) -> None:
     Backup DANDI zarr directories correspond to the `task_id`.
     """
     backup_dandi_zarr(task_id=task_id)
+
+
+# s3backup dandi verify-blobs
+@_s3backup_dandi.command(name="verify-blobs")
+def _s3backup_dandi_verify_blobs() -> None:
+    """
+    Verify that both storage partitions received blob writes; exit non-zero if any did not.
+    """
+    verify_dandi_blobs()
 
 
 # s3backup dandi dashboard
