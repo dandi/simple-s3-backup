@@ -13,7 +13,7 @@
 # NOTE on partition choice and reliability:
 #   `mit_preemptable` is cheap but jobs can be preempted (killed) at any time, and SLURM places
 #   array tasks in ascending index order. Previously this job ran without `--requeue`, so any task
-#   that was preempted - or that never won a slot on the contended preemptable partition - was lost
+#   that was preempted - or that never won a slot on the contended `mit_preemptable` partition - was lost
 #   silently. The high-index tasks (10-15, which map to storage partition 002) are scheduled last
 #   and were the ones that never ran. The `--requeue` directive above now resubmits preempted tasks
 #   automatically. If preemption keeps causing misses, move this job to a non-preemptable partition.
@@ -22,11 +22,14 @@
 #   The log directory must exist before submission; create it once with:
 #       mkdir -p /orcd/data/dandi/001/backup/logs
 
-set -uo pipefail
-
 source /etc/profile.d/modules.sh  # When run via crontab, this is needed to load the modules
 module load miniforge
 conda activate /orcd/data/dandi/001/environments/name-s3+backup_env
+
+# Only after the setup above: the cluster's module scripts read MODULEPATH, which cron does not
+# set, and under `set -u` bash stops the job at the first such read. With `set -u` first, every
+# task exited with status 1 within a second, from 2026-06-25 until this was moved.
+set -uo pipefail
 
 task_id="${SLURM_ARRAY_TASK_ID}"
 echo "$(date --iso-8601=seconds) starting backup_blobs task ${task_id} (job ${SLURM_ARRAY_JOB_ID:-?} on $(hostname))"

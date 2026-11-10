@@ -17,11 +17,13 @@
 # The log directory must exist before submission; create it once with:
 #     mkdir -p /orcd/data/dandi/001/backup/logs
 
-set -uo pipefail
-
 source /etc/profile.d/modules.sh  # When run via crontab, this is needed to load the modules
 module load miniforge
 conda activate /orcd/data/dandi/001/environments/name-s3+backup_env
+
+# Only after the setup above, which reads variables cron does not set (see
+# backup_blobs_batch_deployment.sh).
+set -uo pipefail
 
 flock -n /orcd/data/dandi/001/backup/flocks/verify_blobs_backup.lock s3backup dandi verify-blobs
 status=$?

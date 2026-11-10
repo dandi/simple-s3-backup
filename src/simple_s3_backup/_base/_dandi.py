@@ -107,11 +107,15 @@ def verify_dandi_blobs() -> None:
         problems.append(f"misplaced heads found: {details}")
 
     if problems:
-        message = "\nALERT: " + "; ".join(problems) + (
-            "\nRun `s3backup dandi cleanup-misplaced-blobs` to remove misplaced copies once the correct "
-            "partition holds them."
-            if misplaced
-            else ""
+        message = (
+            "\nALERT: "
+            + "; ".join(problems)
+            + (
+                "\nRun `s3backup dandi cleanup-misplaced-blobs` to remove misplaced copies once the correct "
+                "partition holds them."
+                if misplaced
+                else ""
+            )
         )
         raise RuntimeError(message)
 
@@ -148,9 +152,7 @@ def cleanup_misplaced_dandi_blobs(apply: bool = False) -> None:
                 continue
             for misplaced_subdirectory in _head_subdirectories(partition=partition, head_hexcode=head_hexcode):
                 correct_copy = correct_directory / misplaced_subdirectory.name
-                is_safe, reason = _blob_subdirectory_is_fully_copied(
-                    source=misplaced_subdirectory, target=correct_copy
-                )
+                is_safe, reason = _blob_subdirectory_is_fully_copied(source=misplaced_subdirectory, target=correct_copy)
                 if not is_safe:
                     skipped.append(str(misplaced_subdirectory))
                     print(
