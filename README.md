@@ -10,9 +10,60 @@ See also https://github.com/dandi/s3invsync for a more complicated approach that
 
 # Crontab
 
+The jobs are scheduled by the crontab of
+[dandi-compute-runner](https://github.com/dandi-compute/dandi-compute-runner/blob/main/launcher/crontab),
+the only crontab installed on the cluster's login node. It submits each of them through
+[`launcher/backup.sh`](https://github.com/dandi-compute/dandi-compute-runner/blob/main/launcher/backup.sh):
+
 ```bash
-0 22 * * * flock -n /orcd/data/dandi/001/backup/flocks/backup_blobs_batch.lock sbatch /orcd/data/dandi/001/backup/simple-s3-backup/scripts/backup_blobs_batch_deployment.sh
-#0 19 * * 0,3 flock -n /orcd/data/dandi/001/backup/flocks/backup_zarr_batch.lock sbatch /orcd/data/dandi/001/backup/simple-s3-backup/scripts/backup_zarr_batch_deployment.sh  # Zarr was disabled in May 2026
-0 18 * * * flock -n /orcd/data/dandi/001/backup/flocks/backup_nonblobs.lock sbatch /orcd/data/dandi/001/backup/simple-s3-backup/scripts/backup_nonblobs_deployment.sh
-0 6 * * * flock -n /orcd/data/dandi/001/backup/flocks/update_dashboard.lock sbatch /orcd/data/dandi/001/backup/simple-s3-backup/scripts/update_dashboard.sh
+0 22 * * * /orcd/data/dandi/001/dandi-compute/dandi-compute-runner/launcher/backup.sh blobs > /dev/null 2>&1
+#0 19 * * 0,3 /orcd/data/dandi/001/dandi-compute/dandi-compute-runner/launcher/backup.sh zarr > /dev/null 2>&1  # Zarr was disabled in May 2026
+0 18 * * * /orcd/data/dandi/001/dandi-compute/dandi-compute-runner/launcher/backup.sh nonblobs > /dev/null 2>&1
+0 6 * * * /orcd/data/dandi/001/dandi-compute/dandi-compute-runner/launcher/backup.sh dashboard > /dev/null 2>&1
 ```
+
+`backup.sh` names the jobs (`DANDI-Backup-Blobs`, `DANDI-Backup-Nonblobs`, `DANDI-Update-Backup-Dashboard`),
+keeps the per-kind `flock` around `sbatch`, and records each submission in DANDI Compute's global logs. It
+passes `--output` and `--error` itself, which take precedence over the `#SBATCH` ones in these scripts, so
+each job's output goes to `/orcd/data/dandi/001/backup/logs/{job name}-{job ID}.log` (or
+`{job name}-{array job}_{task}.log`). The runner's Check backup workflow emails when one of these jobs fails
+or the blob mirror stops growing.
+
+The scripts are run from cron's environment, which sets neither `MODULEPATH` nor most other variables. Each
+turns on `set -u` only after `module load` and `conda activate`, since the cluster's module scripts read
+`MODULEPATH` and bash would otherwise stop the job at once.
+
+`verify_blobs_backup_deployment.sh` is not scheduled. To run the partition check after a blob backup, queue
+it behind the array, or run it by hand:
+
+```bash
+sbatch --dependency=afterany:<array job ID> /orcd/data/dandi/001/backup/simple-s3-backup/scripts/verify_blobs_backup_deployment.sh
+```
+
+```bash
+s3backup dandi verify-blobs
+```
+
+Submitted on its own, it writes its logs to `/orcd/data/dandi/001/backup/logs/`, which must exist
+(`backup.sh` creates it).
+
+
+# Fixing blob heads stranded on the wrong partition
+
+Before the 001/002 split, heads a-f were backed up into partition `001`; they now route to `002`,
+but `s5cmd cp` never deletes, so the old a-f copies stay behind in `001`. `verify-blobs` reports
+these as `MISPLACED`. To clean them up safely:
+
+```bash
+# 1. Make sure the correct partition holds the data (the nightly backup already does this):
+s3backup dandi blobs <task_id>        # for the affected heads, or just let the array run
+
+# 2. Preview what would be deleted (dry run - deletes nothing):
+s3backup dandi cleanup-misplaced-blobs
+
+# 3. Actually delete the misplaced copies:
+s3backup dandi cleanup-misplaced-blobs --apply
+```
+
+The cleanup only deletes a misplaced sub-directory once the correct partition holds a byte-for-byte
+complete copy, so no data is lost; anything not yet fully copied is reported and skipped.

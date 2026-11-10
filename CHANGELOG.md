@@ -11,3 +11,13 @@ Added simple display through `backup dandi dashboard` to show the current backup
 Updated the timestamp in the backup status dashboard to display in a human-readable format (e.g., "January 15, 2024 at 02:30 PM ET") instead of ISO 8601 format.
 
 Switched markdown table generation in the backup status dashboard from a custom implementation to `tabulate2`.
+
+Added `s3backup dandi verify-blobs`, which checks that every blob head is on its assigned partition and only there, and `verify_blobs_backup_deployment.sh` to run it as a job.
+
+Added `s3backup dandi cleanup-misplaced-blobs [--apply]`, which removes blob heads left on the wrong partition once the right one holds a complete copy.
+
+The blob backup job requeues preempted tasks, logs each task, and fails loudly when its lock is held.
+
+## Fixes
+
+The blob backup and verify jobs turn on `set -u` only after `module load` and `conda activate`. With it first, the cluster's module scripts stopped every task within a second on the unset `MODULEPATH`, so no blob was backed up from 2026-06-25 until this fix.
