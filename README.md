@@ -20,9 +20,10 @@ the only crontab installed on the cluster's login node. It submits each of them 
 #0 19 * * 0,3 /orcd/data/dandi/001/dandi-compute/dandi-compute-runner/launcher/backup.sh zarr > /dev/null 2>&1  # Zarr was disabled in May 2026
 0 18 * * * /orcd/data/dandi/001/dandi-compute/dandi-compute-runner/launcher/backup.sh nonblobs > /dev/null 2>&1
 0 6 * * * /orcd/data/dandi/001/dandi-compute/dandi-compute-runner/launcher/backup.sh dashboard > /dev/null 2>&1
+0 10 * * * /orcd/data/dandi/001/dandi-compute/dandi-compute-runner/launcher/backup.sh checksums > /dev/null 2>&1
 ```
 
-`backup.sh` names the jobs (`DANDI-Backup-Blobs`, `DANDI-Backup-Nonblobs`, `DANDI-Update-Backup-Dashboard`),
+`backup.sh` names the jobs (`DANDI-Backup-Blobs`, `DANDI-Backup-Nonblobs`, `DANDI-Update-Backup-Dashboard`, `DANDI-Verify-Checksums`),
 keeps the per-kind `flock` around `sbatch`, and records each submission in DANDI Compute's global logs. It
 passes `--output` and `--error` itself, which take precedence over the `#SBATCH` ones in these scripts, so
 each job's output goes to `/orcd/data/dandi/001/backup/logs/{job name}-{job ID}.log` (or
@@ -67,3 +68,49 @@ s3backup dandi cleanup-misplaced-blobs --apply
 
 The cleanup only deletes a misplaced sub-directory once the correct partition holds a byte-for-byte
 complete copy, so no data is lost; anything not yet fully copied is reported and skipped.
+
+
+# Verifying the content of the blob mirror
+
+The blob backup copies with `s5cmd cp --if-size-differ --if-source-newer`, which compares only sizes and
+times: a copy of the right size with the wrong content is never replaced. `verify-checksums` compares the
+content of every mirrored blob with its object in the bucket, one head (first hex digit) at a time:
+
+```bash
+s3backup dandi verify-checksums <task_id>                   # 0-15, as for `s3backup dandi blobs`
+s3backup dandi verify-checksums <task_id> --repair          # also copy each blob that does not match again
+s3backup dandi verify-checksums <task_id> --rehash-older-than 180   # re-read files checked over 180 days ago
+```
+
+It lists the bucket anonymously for each blob's size and ETag. DANDI uploads every blob in parts of
+64 MiB (larger for a file that would otherwise take 10,000 parts or more), so the ETag is the MD5 of the
+parts' MD5s followed by `-{number of parts}`. The local copy's ETag is computed the same way and compared.
+A blob whose ETag shows other parts than DANDI's is reported as unverifiable, since its part sizes are
+unknown.
+
+Computing an ETag reads the whole file, so it is cached beside the blob as `.{blob_id}.checksum`, which
+holds the ETag and nothing else. The cache file is given the blob's modification time when it is written,
+so a later run trusts it while the blob keeps that modification time, and only blobs copied or changed
+since are read again. `--rehash-older-than DAYS` re-reads files whose checksum was cached longer ago than
+that (by the cache file's change time), to catch damage on disk that leaves the modification time alone;
+`0` re-reads everything. Each cache is one more file next to each blob, which doubles the file count of the
+blob directories. The dashboard and `cleanup-misplaced-blobs` skip them.
+
+A file changed in the last hour may still be being written by the backup, so it is left for the next run.
+The command also reports the blobs not mirrored yet and those mirrored but no longer in the bucket. It
+exits non-zero when a blob does not match (and `--repair` did not fix it) or part of the bucket could not
+be listed.
+
+Every mismatch is also recorded for good in the ledger `/orcd/data/dandi/001/backup/checksum_mismatches.tsv`,
+one tab-separated line per event: `time`, `event`, `key`, `path`, `observed`, `expected` and `job` (the
+SLURM job, `{array job}_{task}`, whose log has the rest, or `manual`). The events are `etag-mismatch` and
+`size-mismatch` when a blob is found not to match, `repaired` or `repair-failed` after `--repair` copies it
+again, and `resolved` when a later run finds it matching without that, the backup having copied it again.
+A mismatch still unresolved is not recorded again by the runs that find it unchanged. The ledger is never
+pruned; DANDI Compute's runner publishes it to the `checksum-mismatches` branch of
+[its global logs](https://github.com/dandi-compute/dandi-compute-global-logs/blob/checksum-mismatches/checksum-mismatches.tsv).
+
+`verify_checksums_batch_deployment.sh` runs it as a 16-task array, 4 tasks at a time. The first run reads
+the whole mirror, which takes longer than the 12-hour limit, but a task that times out or is preempted
+keeps what it has cached and the next day's run carries on from there. A task that finds the previous
+day's task for its head still running leaves the head to it.

@@ -8,6 +8,7 @@ import zoneinfo
 import yaml
 from tabulate2 import tabulate
 
+from ._checksums import is_checksum_cache
 from ._globals import BLOBS_HEAD_TO_PARTITION
 from ._utils import _deploy_subprocess, _get_today
 
@@ -270,7 +271,12 @@ def _get_local_size_in_bytes_and_object_count(path: pathlib.Path) -> tuple[int, 
         return path.stat().st_size, 1
 
     if path.is_dir():
-        sizes = [subpath.stat().st_size for subpath in path.rglob(pattern="*") if subpath.is_file()]
+        # Not the checksums `verify-checksums` caches beside each blob, which are not objects of the bucket.
+        sizes = [
+            subpath.stat().st_size
+            for subpath in path.rglob(pattern="*")
+            if subpath.is_file() and not is_checksum_cache(subpath)
+        ]
         return sum(sizes), len(sizes)
 
 

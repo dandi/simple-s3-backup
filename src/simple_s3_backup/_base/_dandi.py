@@ -1,6 +1,7 @@
 import pathlib
 import shutil
 
+from ._checksums import is_checksum_cache
 from ._globals import BLOBS_HEAD_TO_PARTITION, ZARR_HEAD_TO_PARTITION
 from ._utils import _deploy_subprocess
 
@@ -190,7 +191,8 @@ def _blob_subdirectory_is_fully_copied(source: pathlib.Path, target: pathlib.Pat
     if not target.exists():
         return False, f"no copy on the correct partition ({target})"
 
-    source_files = [path for path in source.rglob("*") if path.is_file()]
+    # A checksum cached beside a blob is not part of the copy, so one missing on the target does not matter.
+    source_files = [path for path in source.rglob("*") if path.is_file() and not is_checksum_cache(path)]
     if not source_files:
         return True, ""  # An empty stray directory is safe to remove.
 
