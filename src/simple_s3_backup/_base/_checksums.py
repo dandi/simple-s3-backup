@@ -9,18 +9,21 @@ DANDI uploads every blob in parts (``DandiETag`` in dandischema), so its ETag is
 of its parts, followed by ``-`` and the number of parts. The parts are 64 MiB, or larger for a file
 that would otherwise need 10,000 parts or more. The ETag of the local copy is computed the same way.
 
-Computing it reads the whole file, so the result is cached next to the blob, in
-``.{blob_id}.checksum``. A later run reuses it while the file keeps the size and modification time it
-had, unless the cache is older than it is told to trust.
+Computing it reads the whole file, so the ETag alone is cached next to the blob, in
+``.{blob_id}.checksum``, with the blob's modification time. A later run reuses it while the blob keeps
+that modification time, unless the cache is older than it is told to trust.
+
+Every mismatch, and what became of it, is also recorded for good in a ledger (see ``Ledger``).
 """
 
 import dataclasses
 import datetime
+import fcntl
 import hashlib
-import json
 import math
 import os
 import pathlib
+import re
 import time
 import urllib.error
 import urllib.parse
@@ -45,6 +48,16 @@ RECENT_SECONDS = 3600
 
 #: How many blobs that are on the partition but not in the bucket are named, per head.
 _NOT_IN_BUCKET_SHOWN = 20
+
+#: What a cached checksum holds: an ETag, in parts or not.
+_ETAG_PATTERN = re.compile(r"[0-9a-f]{32}(-[0-9]+)?")
+
+#: The ledger of mismatches, never pruned. The runner of DANDI Compute publishes it to the
+#: checksum-mismatches branch of its global logs.
+LEDGER_PATH = pathlib.Path("/orcd/data/dandi/001/backup/checksum_mismatches.tsv")
+_LEDGER_COLUMNS = ("time", "event", "key", "path", "observed", "expected", "job")
+_MISMATCH_EVENTS = ("etag-mismatch", "size-mismatch")
+_RESOLVING_EVENTS = ("repaired", "resolved")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -172,44 +185,99 @@ def _local_blob_paths(prefix_directory: pathlib.Path) -> dict[str, pathlib.Path]
     return blob_paths
 
 
-def _cached_etag(blob_path: pathlib.Path, stat: os.stat_result, oldest_trusted: datetime.datetime | None) -> str | None:
-    """The cached ETag of the blob, if it was computed for the file as it is now and recently enough."""
+def _cached_etag(blob_path: pathlib.Path, stat: os.stat_result, oldest_trusted: float | None) -> str | None:
+    """
+    The cached ETag of the blob, if it was computed for the file as it is now and recently enough.
+
+    The cache holds the ETag alone. Its modification time is set to the blob's when it is written, so a
+    blob changed since no longer has the same one, and its change time is when it was written.
+    """
+    cache_path = checksum_cache_path(blob_path)
     try:
-        cache = json.loads(checksum_cache_path(blob_path).read_text())
-    except (OSError, ValueError):
-        return None
-    if not isinstance(cache, dict) or cache.get("size") != stat.st_size or cache.get("mtime_ns") != stat.st_mtime_ns:
-        return None
-    if oldest_trusted is not None:
-        try:
-            if datetime.datetime.fromisoformat(cache["computed_at"]) < oldest_trusted:
-                return None
-        except (KeyError, TypeError, ValueError):
+        cache_stat = cache_path.stat()
+        if cache_stat.st_mtime_ns != stat.st_mtime_ns:
             return None
-    return cache.get("etag")
+        if oldest_trusted is not None and cache_stat.st_ctime < oldest_trusted:
+            return None
+        etag = cache_path.read_text().strip()
+    except OSError:
+        return None
+    return etag if _ETAG_PATTERN.fullmatch(etag) else None
 
 
-def _write_cache(blob_path: pathlib.Path, stat: os.stat_result, etag: str, s3_etag: str) -> None:
-    cache = {
-        "blob_id": blob_path.name,
-        "etag": etag,
-        "size": stat.st_size,
-        "mtime_ns": stat.st_mtime_ns,
-        "s3_etag": s3_etag,
-        "matches": etag == s3_etag,
-        "computed_at": datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0).isoformat(),
-    }
+def _write_cache(blob_path: pathlib.Path, stat: os.stat_result, etag: str) -> None:
+    """Cache the ETag computed from the blob as ``stat`` describes it, stamped with its modification time."""
     cache_path = checksum_cache_path(blob_path)
     partial_path = cache_path.with_name(f"{cache_path.name}.partial")
-    partial_path.write_text(json.dumps(cache) + "\n")
+    partial_path.write_text(f"{etag}\n")
+    os.utime(partial_path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
     partial_path.replace(cache_path)
+
+
+class Ledger:
+    """
+    The record, kept for good, of every blob found not to match the bucket and of what became of it.
+
+    One tab-separated line per event, appended under a lock, so tasks of several heads can share it:
+
+    - ``etag-mismatch`` or ``size-mismatch``: the local copy does not match. One still unresolved is not
+      recorded again when a later run finds it unchanged.
+    - ``repaired``: ``--repair`` copied it again and it now matches.
+    - ``repair-failed``: ``--repair`` copied it again and it still does not match.
+    - ``resolved``: a later run found it matching without ``--repair``, the blob backup having copied it again.
+    """
+
+    def __init__(self, path: pathlib.Path) -> None:
+        self.path = path
+        self.recorded = 0
+        # The unresolved mismatch of each blob that has one, as (event, observed, expected).
+        self._unresolved: dict[str, tuple[str, str, str]] = {}
+        try:
+            with path.open() as stream:
+                for line in stream:
+                    fields = line.rstrip("\n").split("\t")
+                    if len(fields) == len(_LEDGER_COLUMNS) and fields[0] != _LEDGER_COLUMNS[0]:
+                        self._track(event=fields[1], key=fields[2], observed=fields[4], expected=fields[5])
+        except OSError:
+            pass
+
+    def _track(self, event: str, key: str, observed: str, expected: str) -> None:
+        if event in _MISMATCH_EVENTS:
+            self._unresolved[key] = (event, observed, expected)
+        elif event in _RESOLVING_EVENTS:
+            self._unresolved.pop(key, None)
+
+    def is_unresolved(self, key: str) -> bool:
+        return key in self._unresolved
+
+    def record(self, event: str, key: str, path: pathlib.Path, observed: object, expected: object) -> None:
+        observed, expected = str(observed), str(expected)
+        if event in _MISMATCH_EVENTS and self._unresolved.get(key) == (event, observed, expected):
+            return
+        self._track(event=event, key=key, observed=observed, expected=expected)
+
+        job = os.environ.get("SLURM_JOB_ID", "manual")
+        if "SLURM_ARRAY_JOB_ID" in os.environ:
+            job = f"{os.environ['SLURM_ARRAY_JOB_ID']}_{os.environ.get('SLURM_ARRAY_TASK_ID', '')}"
+        time_now = datetime.datetime.now(tz=datetime.timezone.utc).replace(microsecond=0).isoformat()
+        fields = (time_now, event, key, str(path), observed, expected, job)
+        line = "\t".join(" ".join(field.split()) for field in fields) + "\n"
+        try:
+            with self.path.open(mode="a") as stream:
+                fcntl.flock(stream, fcntl.LOCK_EX)
+                if stream.seek(0, os.SEEK_END) == 0:
+                    stream.write("\t".join(_LEDGER_COLUMNS) + "\n")
+                stream.write(line)
+            self.recorded += 1
+        except OSError as error:
+            print(f"[NOT IN LEDGER] could not record {event} of {key} in {self.path}: {error}", flush=True)
 
 
 def _local_etag(
     blob_path: pathlib.Path,
     s3_etag: str,
     stat: os.stat_result,
-    oldest_trusted: datetime.datetime | None,
+    oldest_trusted: float | None,
     counts: VerificationCounts,
 ) -> str | None:
     """The ETag of the local copy, from its cache or read from the file; None if it changed while read."""
@@ -223,7 +291,7 @@ def _local_etag(
     if (after.st_size, after.st_mtime_ns) != (stat.st_size, stat.st_mtime_ns):
         return None
     counts.hashed += 1
-    _write_cache(blob_path, stat, etag, s3_etag)
+    _write_cache(blob_path, stat, etag)
     return etag
 
 
@@ -231,9 +299,10 @@ def verify_object(
     s3_object: S3Object,
     blob_path: pathlib.Path,
     *,
-    oldest_trusted: datetime.datetime | None,
+    oldest_trusted: float | None,
     repair: bool,
     counts: VerificationCounts,
+    ledger: Ledger,
 ) -> None:
     """Check the local copy of one object against its ETag, and copy it again on a mismatch if ``repair``."""
     stat = blob_path.stat()
@@ -248,6 +317,7 @@ def verify_object(
         return
 
     if stat.st_size != s3_object.size:
+        event, observed, expected = "size-mismatch", stat.st_size, s3_object.size
         reason = f"{stat.st_size} bytes, expected {s3_object.size}"
     else:
         etag = _local_etag(blob_path, s3_object.etag, stat, oldest_trusted, counts)
@@ -256,11 +326,15 @@ def verify_object(
             return
         if etag == s3_object.etag:
             counts.verified += 1
+            if ledger.is_unresolved(s3_object.key):
+                ledger.record("resolved", s3_object.key, blob_path, observed=etag, expected=s3_object.etag)
             return
+        event, observed, expected = "etag-mismatch", etag, s3_object.etag
         reason = f"ETag {etag}, expected {s3_object.etag}"
 
     print(f"[MISMATCH] {s3_object.key}: {reason}", flush=True)
     counts.mismatched.append(f"{s3_object.key}: {reason}")
+    ledger.record(event, s3_object.key, blob_path, observed=observed, expected=expected)
     if not repair:
         return
 
@@ -271,17 +345,23 @@ def verify_object(
         etag = compute_etag(blob_path, multipart="-" in s3_object.etag)
     except OSError as error:
         print(f"[NOT REPAIRED] {s3_object.key}: could not read it after copying it again ({error})", flush=True)
+        ledger.record("repair-failed", s3_object.key, blob_path, observed=f"unreadable: {error}", expected=expected)
         return
-    _write_cache(blob_path, stat, etag, s3_object.etag)
+    _write_cache(blob_path, stat, etag)
     if etag == s3_object.etag:
         counts.repaired.append(s3_object.key)
         print(f"[REPAIRED] {s3_object.key}: copied again from the bucket", flush=True)
+        ledger.record("repaired", s3_object.key, blob_path, observed=etag, expected=s3_object.etag)
     else:
         print(f"[NOT REPAIRED] {s3_object.key}: copied again, it still has ETag {etag}", flush=True)
+        ledger.record("repair-failed", s3_object.key, blob_path, observed=etag, expected=s3_object.etag)
 
 
 def verify_dandi_blob_checksums(
-    task_id: int, rehash_older_than_days: float | None = None, repair: bool = False
+    task_id: int,
+    rehash_older_than_days: float | None = None,
+    repair: bool = False,
+    ledger_path: pathlib.Path | None = None,
 ) -> VerificationCounts:
     """
     Verify the mirrored blobs of one top-level hash head against their ETags in the bucket.
@@ -293,17 +373,19 @@ def verify_dandi_blob_checksums(
     rehash_older_than_days : float, optional
         Read a file again when its checksum was cached more than this many days ago, even if the file has
         not changed since. 0 reads every file again. By default a cached checksum is trusted while the file
-        keeps its size and modification time.
+        keeps the modification time it had.
     repair : bool, default False
         Copy a blob again from the bucket when its local copy does not match.
+    ledger_path : pathlib.Path, optional
+        The ledger each mismatch, and what became of it, is recorded in (see ``Ledger``). Defaults to
+        ``LEDGER_PATH``.
     """
     blobs_directory = _MIRROR_ROOT / BLOBS_HEAD_TO_PARTITION[task_id] / "s3dandiarchive" / "blobs"
     head = f"{task_id:01x}"
     oldest_trusted = None
     if rehash_older_than_days is not None:
-        oldest_trusted = datetime.datetime.now(tz=datetime.timezone.utc) - datetime.timedelta(
-            days=rehash_older_than_days
-        )
+        oldest_trusted = time.time() - rehash_older_than_days * 24 * 3600
+    ledger = Ledger(path=ledger_path or LEDGER_PATH)
 
     print(f"Verifying head {head} in {blobs_directory} against s3://{_BUCKET}/blobs/{head}*", flush=True)
     counts = VerificationCounts()
@@ -323,7 +405,9 @@ def verify_dandi_blob_checksums(
                 if blob_path is None:
                     counts.not_mirrored += 1
                     continue
-                verify_object(s3_object, blob_path, oldest_trusted=oldest_trusted, repair=repair, counts=counts)
+                verify_object(
+                    s3_object, blob_path, oldest_trusted=oldest_trusted, repair=repair, counts=counts, ledger=ledger
+                )
             counts.not_in_bucket.extend(sorted(local_blob_paths))
 
         print(
@@ -348,6 +432,8 @@ def verify_dandi_blob_checksums(
         print(f"  [NOT IN BUCKET] {key}")
     if len(counts.not_in_bucket) > _NOT_IN_BUCKET_SHOWN:
         print(f"  [NOT IN BUCKET] ... and {len(counts.not_in_bucket) - _NOT_IN_BUCKET_SHOWN} more")
+    if ledger.recorded:
+        print(f"\n{ledger.recorded} new events recorded in the ledger {ledger.path}")
     if counts.mismatched:
         print(f"\n{len(counts.mismatched)} blobs do not match the bucket:")
         for mismatch in counts.mismatched:

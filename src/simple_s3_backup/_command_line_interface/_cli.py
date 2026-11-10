@@ -92,7 +92,7 @@ def _s3backup_dandi_verify_blobs() -> None:
     help=(
         "Read a file again when its checksum was cached more than DAYS days ago, even if the file has not "
         "changed since; 0 reads every file again. By default a cached checksum is trusted while the file keeps "
-        "its size and modification time."
+        "the modification time it had."
     ),
 )
 @click.option(
@@ -108,8 +108,9 @@ def _s3backup_dandi_verify_checksums(
     Verify the content of the mirrored blobs whose ID starts with hex digit `task_id` against the bucket.
 
     Each blob's ETag is computed as DANDI uploads it and compared with the ETag of its object in the bucket.
-    The result is cached beside the blob in `.{blob_id}.checksum`. Exits non-zero if a blob does not match
-    (and was not repaired) or part of the bucket could not be listed.
+    The ETag is cached beside the blob in `.{blob_id}.checksum`. Each mismatch, and what became of it, is
+    recorded in the ledger /orcd/data/dandi/001/backup/checksum_mismatches.tsv. Exits non-zero if a blob does
+    not match (and was not repaired) or part of the bucket could not be listed.
     """
     counts = verify_dandi_blob_checksums(task_id=task_id, rehash_older_than_days=rehash_older_than_days, repair=repair)
     if counts.unrepaired or counts.unlisted_prefixes:

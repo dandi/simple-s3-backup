@@ -18,7 +18,7 @@ Added `s3backup dandi cleanup-misplaced-blobs [--apply]`, which removes blob hea
 
 The blob backup job requeues preempted tasks, logs each task, and fails loudly when its lock is held.
 
-Added `s3backup dandi verify-checksums <task_id> [--repair] [--rehash-older-than DAYS]`, which compares the content of each mirrored blob with the ETag of its object in the bucket, caching each result beside the blob in `.{blob_id}.checksum`, and `verify_checksums_batch_deployment.sh` to run it for every head as a job. The dashboard and `cleanup-misplaced-blobs` skip the cached checksums.
+Added `s3backup dandi verify-checksums <task_id> [--repair] [--rehash-older-than DAYS]`, which compares the content of each mirrored blob with the ETag of its object in the bucket, caching each blob's ETag beside it in `.{blob_id}.checksum` and recording every mismatch and its outcome in the ledger `/orcd/data/dandi/001/backup/checksum_mismatches.tsv`, and `verify_checksums_batch_deployment.sh` to run it for every head as a job. The dashboard and `cleanup-misplaced-blobs` skip the cached checksums.
 
 ## Fixes
 

@@ -1,5 +1,4 @@
 import hashlib
-import json
 import pathlib
 
 import pytest
@@ -54,6 +53,7 @@ def test_is_checksum_cache():
 def mirror(tmp_path, monkeypatch):
     """A mirror of head 0 with one blob of each kind, and the bucket listing it is checked against."""
     monkeypatch.setattr(_checksums, "_MIRROR_ROOT", tmp_path)
+    monkeypatch.setattr(_checksums, "LEDGER_PATH", tmp_path / "checksum_mismatches.tsv")
     monkeypatch.setattr(_checksums, "RECENT_SECONDS", 0)
     blobs_directory = tmp_path / "001" / "s3dandiarchive" / "blobs"
 
@@ -95,11 +95,11 @@ def test_verify(mirror, capsys):
     assert counts.not_mirrored == 1
     assert counts.not_in_bucket == ["blobs/0ab/cde/0abcdef0-deleted"]
 
+    # The cache holds the ETag alone, stamped with the blob's modification time.
     good = blobs_directory / "012/345/01234567-good"
-    cache = json.loads(_checksums.checksum_cache_path(good).read_text())
-    assert cache["etag"] == _etag_of_parts(b"the right content")
-    assert cache["matches"] is True
-    assert cache["mtime_ns"] == good.stat().st_mtime_ns
+    cache_path = _checksums.checksum_cache_path(good)
+    assert cache_path.read_text() == _etag_of_parts(b"the right content") + "\n"
+    assert cache_path.stat().st_mtime_ns == good.stat().st_mtime_ns
 
     # The second run trusts the cache, until the file changes or the cache is older than allowed.
     counts = _checksums.verify_dandi_blob_checksums(task_id=0)
@@ -109,8 +109,60 @@ def test_verify(mirror, capsys):
     assert (counts.hashed, counts.reused, counts.verified) == (1, 1, 1)
     counts = _checksums.verify_dandi_blob_checksums(task_id=0, rehash_older_than_days=0)
     assert (counts.hashed, counts.reused) == (2, 0)
+    cache_path.write_text("not a checksum\n")
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert (counts.hashed, counts.reused, counts.verified) == (1, 1, 1)
 
     assert "[MISMATCH] blobs/012/345/01234567-corrupt" in capsys.readouterr().out
+
+
+def _ledger_events() -> list[tuple[str, str, str, str]]:
+    """The ledger's lines after its header, as (event, key, observed, expected)."""
+    lines = _checksums.LEDGER_PATH.read_text().splitlines()
+    assert lines[0].split("\t") == list(_checksums._LEDGER_COLUMNS)
+    return [tuple(fields[i] for i in (1, 2, 4, 5)) for fields in (line.split("\t") for line in lines[1:])]
+
+
+def test_ledger(mirror):
+    blobs_directory, _ = mirror
+    corrupt_etag = _etag_of_parts(b"the wrong content")
+    right_etag = _etag_of_parts(b"the right content")
+    found = [
+        ("etag-mismatch", "blobs/012/345/01234567-corrupt", corrupt_etag, right_etag),
+        ("size-mismatch", "blobs/0ab/cde/0abcdef0-short", "9", "17"),
+    ]
+
+    _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert _ledger_events() == found
+
+    # A mismatch already recorded is not recorded again while it lasts.
+    _checksums.verify_dandi_blob_checksums(task_id=0)
+    _checksums.verify_dandi_blob_checksums(task_id=0, rehash_older_than_days=0)
+    assert _ledger_events() == found
+
+    # The blob backup copies the short one again, which a later run records as resolved; should it go
+    # wrong again, that is a new mismatch.
+    short = blobs_directory / "0ab/cde/0abcdef0-short"
+    short.write_bytes(b"the right content")
+    _checksums.verify_dandi_blob_checksums(task_id=0)
+    resolved = ("resolved", "blobs/0ab/cde/0abcdef0-short", right_etag, right_etag)
+    assert _ledger_events() == [*found, resolved]
+    short.write_bytes(b"the right")
+    _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert _ledger_events() == [*found, resolved, found[1]]
+
+
+def test_ledger_records_which_job(mirror, monkeypatch):
+    monkeypatch.setenv("SLURM_ARRAY_JOB_ID", "1234")
+    monkeypatch.setenv("SLURM_ARRAY_TASK_ID", "0")
+    _checksums.verify_dandi_blob_checksums(task_id=0)
+    monkeypatch.delenv("SLURM_ARRAY_JOB_ID")
+    monkeypatch.delenv("SLURM_JOB_ID", raising=False)
+    (mirror[0] / "012/345/01234567-good").write_bytes(b"damaged")
+    _checksums.verify_dandi_blob_checksums(task_id=0)
+
+    jobs = [line.split("\t")[-1] for line in _checksums.LEDGER_PATH.read_text().splitlines()[1:]]
+    assert jobs == ["1234_0", "1234_0", "manual"]
 
 
 def test_verify_repairs(mirror, monkeypatch):
@@ -128,6 +180,13 @@ def test_verify_repairs(mirror, monkeypatch):
     counts = _checksums.verify_dandi_blob_checksums(task_id=0)
     assert counts.verified == 3
     assert not counts.mismatched
+
+    assert [event[:2] for event in _ledger_events()] == [
+        ("etag-mismatch", "blobs/012/345/01234567-corrupt"),
+        ("repaired", "blobs/012/345/01234567-corrupt"),
+        ("size-mismatch", "blobs/0ab/cde/0abcdef0-short"),
+        ("repaired", "blobs/0ab/cde/0abcdef0-short"),
+    ]
 
 
 def test_verify_leaves_recent_files(mirror, monkeypatch):
