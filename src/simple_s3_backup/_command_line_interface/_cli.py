@@ -7,6 +7,7 @@ from .._base import (
     cleanup_misplaced_dandi_blobs,
     update_display,
     update_manifest,
+    verify_dandi_blob_checksums,
     verify_dandi_blobs,
 )
 
@@ -77,6 +78,42 @@ def _s3backup_dandi_verify_blobs() -> None:
     Verify each blob head is on its assigned partition and nowhere else; exit non-zero otherwise.
     """
     verify_dandi_blobs()
+
+
+# s3backup dandi verify-checksums <int>
+@_s3backup_dandi.command(name="verify-checksums")
+@click.argument("task_id", type=click.IntRange(0, 15))
+@click.option(
+    "--rehash-older-than",
+    "rehash_older_than_days",
+    type=click.FloatRange(min=0),
+    default=None,
+    metavar="DAYS",
+    help=(
+        "Read a file again when its checksum was cached more than DAYS days ago, even if the file has not "
+        "changed since; 0 reads every file again. By default a cached checksum is trusted while the file keeps "
+        "its size and modification time."
+    ),
+)
+@click.option(
+    "--repair",
+    is_flag=True,
+    default=False,
+    help="Copy a blob again from the bucket when its local copy does not match.",
+)
+def _s3backup_dandi_verify_checksums(
+    task_id: int, rehash_older_than_days: float | None = None, repair: bool = False
+) -> None:
+    """
+    Verify the content of the mirrored blobs whose ID starts with hex digit `task_id` against the bucket.
+
+    Each blob's ETag is computed as DANDI uploads it and compared with the ETag of its object in the bucket.
+    The result is cached beside the blob in `.{blob_id}.checksum`. Exits non-zero if a blob does not match
+    (and was not repaired) or part of the bucket could not be listed.
+    """
+    counts = verify_dandi_blob_checksums(task_id=task_id, rehash_older_than_days=rehash_older_than_days, repair=repair)
+    if counts.unrepaired or counts.unlisted_prefixes:
+        raise SystemExit(1)
 
 
 # s3backup dandi cleanup-misplaced-blobs
