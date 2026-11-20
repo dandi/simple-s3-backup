@@ -31,6 +31,14 @@ import urllib.request
 import xml.etree.ElementTree
 
 from ._globals import BLOBS_HEAD_TO_PARTITION
+from ._not_in_bucket import (
+    GRACE_DAYS,
+    NOT_IN_BUCKET_RECORD_PATH,
+    NotInBucketCounts,
+    NotInBucketRecord,
+    print_summary,
+    reconcile_prefix,
+)
 from ._utils import _deploy_subprocess
 
 _BUCKET = "dandiarchive"
@@ -362,6 +370,8 @@ def verify_dandi_blob_checksums(
     rehash_older_than_days: float | None = None,
     repair: bool = False,
     ledger_path: pathlib.Path | None = None,
+    not_in_bucket_grace_days: float = GRACE_DAYS,
+    not_in_bucket_record_path: pathlib.Path | None = None,
 ) -> VerificationCounts:
     """
     Verify the mirrored blobs of one top-level hash head against their ETags in the bucket.
@@ -379,6 +389,11 @@ def verify_dandi_blob_checksums(
     ledger_path : pathlib.Path, optional
         The ledger each mismatch, and what became of it, is recorded in (see ``Ledger``). Defaults to
         ``LEDGER_PATH``.
+    not_in_bucket_grace_days : float, default 183
+        How long a mirrored blob that is no longer in the bucket is kept from when it was first found
+        missing, before it is deleted from the mirror (see ``_not_in_bucket``).
+    not_in_bucket_record_path : pathlib.Path, optional
+        The record of those blobs (see ``NotInBucketRecord``). Defaults to ``NOT_IN_BUCKET_RECORD_PATH``.
     """
     blobs_directory = _MIRROR_ROOT / BLOBS_HEAD_TO_PARTITION[task_id] / "s3dandiarchive" / "blobs"
     head = f"{task_id:01x}"
@@ -386,6 +401,8 @@ def verify_dandi_blob_checksums(
     if rehash_older_than_days is not None:
         oldest_trusted = time.time() - rehash_older_than_days * 24 * 3600
     ledger = Ledger(path=ledger_path or LEDGER_PATH)
+    not_in_bucket_record = NotInBucketRecord(path=not_in_bucket_record_path or NOT_IN_BUCKET_RECORD_PATH)
+    not_in_bucket = NotInBucketCounts()
 
     print(f"Verifying head {head} in {blobs_directory} against s3://{_BUCKET}/blobs/{head}*", flush=True)
     counts = VerificationCounts()
@@ -408,7 +425,17 @@ def verify_dandi_blob_checksums(
                 verify_object(
                     s3_object, blob_path, oldest_trusted=oldest_trusted, repair=repair, counts=counts, ledger=ledger
                 )
-            counts.not_in_bucket.extend(sorted(local_blob_paths))
+            kept_before = len(not_in_bucket.kept)
+            reconcile_prefix(
+                key_prefix=f"blobs/{prefix}/",
+                bucket_keys={s3_object.key for s3_object in s3_objects},
+                unmatched_paths=local_blob_paths,
+                record=not_in_bucket_record,
+                counts=not_in_bucket,
+                grace_days=not_in_bucket_grace_days,
+                recent_seconds=RECENT_SECONDS,
+            )
+            counts.not_in_bucket.extend(not_in_bucket.kept[kept_before:])
 
         print(
             f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S} through {head}{second:01x}f: {counts.verified} match, "
@@ -428,10 +455,7 @@ def verify_dandi_blob_checksums(
         + (f": {' '.join(counts.unlisted_prefixes)}" if counts.unlisted_prefixes else "")
         + f"\n  {counts.hashed} files were read in this run, {counts.reused} checked from their cached checksum"
     )
-    for key in counts.not_in_bucket[:_NOT_IN_BUCKET_SHOWN]:
-        print(f"  [NOT IN BUCKET] {key}")
-    if len(counts.not_in_bucket) > _NOT_IN_BUCKET_SHOWN:
-        print(f"  [NOT IN BUCKET] ... and {len(counts.not_in_bucket) - _NOT_IN_BUCKET_SHOWN} more")
+    print_summary(not_in_bucket, not_in_bucket_record, not_in_bucket_grace_days, shown=_NOT_IN_BUCKET_SHOWN)
     if ledger.recorded:
         print(f"\n{ledger.recorded} new events recorded in the ledger {ledger.path}")
     if counts.mismatched:
