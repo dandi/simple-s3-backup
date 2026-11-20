@@ -2,12 +2,12 @@ import pathlib
 import shutil
 
 from ._checksums import is_checksum_cache
-from ._globals import BLOBS_HEAD_TO_PARTITION, ZARR_HEAD_TO_PARTITION
+from ._globals import BLOBS_HEAD_TO_PARTITION, MIRROR_ROOT, PARTITIONS, ZARR_HEAD_TO_PARTITION
 from ._utils import _deploy_subprocess
 
 
 def backup_dandi_nonblobs() -> None:
-    backup_directory = pathlib.Path("/orcd/data/dandi/001/s3dandiarchive")
+    backup_directory = MIRROR_ROOT / "001" / "s3dandiarchive"
 
     ls_command = "s5cmd ls s3://dandiarchive"
     ls_output = _deploy_subprocess(command=ls_command, ignore_errors=True)
@@ -27,7 +27,7 @@ def backup_dandi_nonblobs() -> None:
 
 def backup_dandi_blobs(task_id: int) -> None:
     partition = BLOBS_HEAD_TO_PARTITION[task_id]
-    blobs_backup_directory = pathlib.Path(f"/orcd/data/dandi/{partition}/s3dandiarchive/blobs")
+    blobs_backup_directory = _blobs_directory(partition=partition)
 
     top_blob_hexcode = f"{task_id:01x}"
     for sub_blob_hexcode_1 in range(16):
@@ -42,71 +42,102 @@ def backup_dandi_blobs(task_id: int) -> None:
             _deploy_subprocess(command=command, ignore_errors=True)
 
 
-_ALL_PARTITIONS = ("001", "002")
 _BLOBS_SUBPATH = "s3dandiarchive/blobs"
 
 
 def _blobs_directory(partition: str) -> pathlib.Path:
-    return pathlib.Path(f"/orcd/data/dandi/{partition}/{_BLOBS_SUBPATH}")
+    return MIRROR_ROOT / partition / _BLOBS_SUBPATH
 
 
 def _head_subdirectories(partition: str, head_hexcode: str) -> list[pathlib.Path]:
-    """All blob sub-directories on `partition` whose name starts with the single-hex `head_hexcode`."""
+    """The blob sub-directories `blobs/{head}??` on `partition` for the single-hex `head_hexcode`."""
     directory = _blobs_directory(partition)
     if not directory.exists():
         return []
-    return sorted(path for path in directory.glob(f"{head_hexcode}*") if path.is_dir())
+    return sorted(path for path in directory.glob(f"{head_hexcode}??") if path.is_dir())
+
+
+def count_blob_head_subdirectories() -> dict[int, dict[str, int]]:
+    """
+    For each head (0-15), the number of `blobs/{head}??` sub-directories on each partition.
+
+    Shared by `verify-blobs` and the dashboard. It lists the top of each blobs directory only and never
+    walks the files, so it takes seconds however large the mirror is.
+    """
+    return {
+        task_id: {
+            partition: len(_head_subdirectories(partition=partition, head_hexcode=f"{task_id:01x}"))
+            for partition in PARTITIONS
+        }
+        for task_id in range(16)
+    }
+
+
+def blob_head_placement(task_id: int, subdirectories: dict[str, int]) -> tuple[bool, list[str]]:
+    """
+    Whether the head is missing from its assigned partition, and the other partitions it is misplaced on.
+    """
+    assigned_partition = BLOBS_HEAD_TO_PARTITION[task_id]
+    missing = subdirectories.get(assigned_partition, 0) == 0
+    misplaced_on = [
+        partition for partition, count in subdirectories.items() if partition != assigned_partition and count > 0
+    ]
+    return missing, misplaced_on
 
 
 def verify_dandi_blobs() -> None:
     """
     Verify that every blob head lives on its assigned partition, and only there.
 
-    Each top-level hash head (0-f) maps to a storage partition via ``BLOBS_HEAD_TO_PARTITION``
-    (heads 0-9 -> 001, heads a-f -> 002). This guard inspects the on-disk backup directories and
-    alerts loudly if either:
+    Each top-level hash head (0-f) maps to a storage partition via ``partitions.json``. This guard counts
+    the head's sub-directories on each partition and alerts loudly if a head is either:
 
-    * a partition received zero writes for the heads assigned to it, or
-    * a head is *misplaced* - i.e. present on a partition it is not assigned to. This is the failure
-      that left every a-f head stranded in 001: those heads used to route to 001 before the split,
-      and ``s5cmd cp`` never deletes, so the stale copies remained after the mapping changed.
+    * *missing* - its assigned partition holds none of its sub-directories (e.g. the array tasks of one
+      partition never ran), or
+    * *misplaced* - present on a partition it is not assigned to. This is the failure that left every a-f
+      head stranded in 001: those heads used to route to 001 before the split, and ``s5cmd cp`` never
+      deletes, so the stale copies remained after the mapping changed.
 
     Raises
     ------
     RuntimeError
-        If any partition is missing its assigned heads, or holds heads that belong elsewhere.
+        If any head is missing from its assigned partition, or present on another one.
     """
-    expected_present: dict[str, int] = {partition: 0 for partition in _ALL_PARTITIONS}
-    misplaced: list[tuple[str, str, str]] = []  # (head, wrong_partition, correct_partition)
+    counts = count_blob_head_subdirectories()
+    correctly_placed: dict[str, int] = {partition: 0 for partition in PARTITIONS}
+    missing_heads: list[tuple[str, str]] = []  # (head, assigned_partition)
+    misplaced: list[tuple[str, str, str]] = []  # (head, wrong_partition, assigned_partition)
 
-    for task_id in range(16):
-        correct_partition = BLOBS_HEAD_TO_PARTITION[task_id]
+    for task_id, subdirectories in counts.items():
+        assigned_partition = BLOBS_HEAD_TO_PARTITION[task_id]
         head_hexcode = f"{task_id:01x}"
+        missing, misplaced_on = blob_head_placement(task_id=task_id, subdirectories=subdirectories)
 
-        for partition in _ALL_PARTITIONS:
-            count = len(_head_subdirectories(partition=partition, head_hexcode=head_hexcode))
-            if partition == correct_partition:
-                expected_present[partition] += count
-                status = "OK" if count > 0 else "MISSING"
-                print(f"[{status}] head {head_hexcode} -> partition {partition}: {count} sub-directories")
-            elif count > 0:
-                misplaced.append((head_hexcode, partition, correct_partition))
-                print(
-                    f"[MISPLACED] head {head_hexcode} found on partition {partition} "
-                    f"({count} sub-directories) but belongs on {correct_partition}"
-                )
+        count = subdirectories[assigned_partition]
+        correctly_placed[assigned_partition] += count
+        print(
+            f"[{'MISSING' if missing else 'OK'}] head {head_hexcode} -> partition {assigned_partition}: "
+            f"{count} sub-directories"
+        )
+        if missing:
+            missing_heads.append((head_hexcode, assigned_partition))
+        for partition in misplaced_on:
+            misplaced.append((head_hexcode, partition, assigned_partition))
+            print(
+                f"[MISPLACED] head {head_hexcode} found on partition {partition} "
+                f"({subdirectories[partition]} sub-directories) but belongs on {assigned_partition}"
+            )
 
     print("")
-    for partition in _ALL_PARTITIONS:
-        print(f"Partition {partition}: {expected_present[partition]} correctly-placed blob sub-directories")
-
-    empty_partitions = [partition for partition in _ALL_PARTITIONS if expected_present[partition] == 0]
+    for partition in PARTITIONS:
+        print(f"Partition {partition}: {correctly_placed[partition]} correctly-placed blob sub-directories")
 
     problems = []
-    if empty_partitions:
-        problems.append(f"partition(s) received zero of their assigned blob writes: {', '.join(empty_partitions)}")
+    if missing_heads:
+        details = ", ".join(f"head {head} (belongs on {assigned})" for head, assigned in missing_heads)
+        problems.append(f"heads missing from their assigned partition: {details}")
     if misplaced:
-        details = ", ".join(f"head {head} on {wrong} (belongs on {correct})" for head, wrong, correct in misplaced)
+        details = ", ".join(f"head {head} on {wrong} (belongs on {assigned})" for head, wrong, assigned in misplaced)
         problems.append(f"misplaced heads found: {details}")
 
     if problems:
@@ -150,7 +181,7 @@ def cleanup_misplaced_dandi_blobs(apply: bool = False) -> None:
         head_hexcode = f"{task_id:01x}"
         correct_directory = _blobs_directory(partition=correct_partition)
 
-        for partition in _ALL_PARTITIONS:
+        for partition in PARTITIONS:
             if partition == correct_partition:
                 continue
             for misplaced_subdirectory in _head_subdirectories(partition=partition, head_hexcode=head_hexcode):
@@ -213,7 +244,7 @@ def backup_dandi_zarr(task_id: int) -> None:
     top_zarr_hexcode = f"{task_id:02x}"
     partition_key = int(top_zarr_hexcode[0], 16)
     partition = ZARR_HEAD_TO_PARTITION[partition_key]
-    zarr_backup_directory = pathlib.Path(f"/orcd/data/dandi/{partition}/s3dandiarchive/zarr")
+    zarr_backup_directory = MIRROR_ROOT / partition / "s3dandiarchive" / "zarr"
 
     for sub_zarr_hexcode_1 in range(16):
         zarr_subdirectory = f"{top_zarr_hexcode}{sub_zarr_hexcode_1:01x}"

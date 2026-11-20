@@ -26,8 +26,11 @@ import pathlib
 import re
 import time
 
-#: How long a blob is kept once it is found to be no longer in the bucket: about 6 months.
-GRACE_DAYS = 183
+from ._globals import NOT_IN_BUCKET_GRACE_DAYS
+
+#: How long a blob is kept once it is found to be no longer in the bucket: about 6 months, set by
+#: ``not_in_bucket_grace_days`` in partitions.json, which the runner's report reads too.
+GRACE_DAYS = NOT_IN_BUCKET_GRACE_DAYS
 
 #: A partial download is removed once it has not changed for this long.
 STALE_DOWNLOAD_SECONDS = 24 * 3600
