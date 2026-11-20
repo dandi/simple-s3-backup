@@ -72,13 +72,15 @@ complete copy, so no data is lost; anything not yet fully copied is reported and
 
 # Verifying the content of the blob mirror
 
-The blob backup copies with `s5cmd cp --if-size-differ --if-source-newer`, which compares only sizes and
-times: a copy of the right size with the wrong content is never replaced. `verify-checksums` compares the
-content of every mirrored blob with its object in the bucket, one head (first hex digit) at a time:
+The blob backup copies with `s5cmd cp --if-size-differ --if-source-newer`. Given both, s5cmd (v2.3.0) lets
+the last, `--if-source-newer`, decide, so a local copy, being newer than its object, is never replaced
+whatever its size or content, while a missing one is always copied. `verify-checksums` compares the
+content of every mirrored blob with its object in the bucket, one head (first hex digit) at a time, and
+deletes a copy that does not match, with its cached checksum, so that the next blob backup copies it afresh:
 
 ```bash
 s3backup dandi verify-checksums <task_id>                   # 0-15, as for `s3backup dandi blobs`
-s3backup dandi verify-checksums <task_id> --repair          # also copy each blob that does not match again
+s3backup dandi verify-checksums <task_id> --repair          # copy each blob that does not match again at once
 s3backup dandi verify-checksums <task_id> --rehash-older-than 180   # re-read files checked over 180 days ago
 ```
 
@@ -98,15 +100,19 @@ blob directories. The dashboard and `cleanup-misplaced-blobs` skip them.
 
 A file changed in the last hour may still be being written by the backup, so it is left for the next run.
 The command also reports the blobs not mirrored yet and those mirrored but no longer in the bucket. It
-exits non-zero when a blob does not match (and `--repair` did not fix it) or part of the bucket could not
-be listed.
+exits 1 when part of the bucket could not be listed or a copy that does not match could be neither deleted
+nor repaired, otherwise 3 when it deleted a copy that does not match (DANDI Compute's Check backup workflow
+reports that exit code as a checksum mismatch, with the blobs named in the log's `[DELETED]` lines), and
+otherwise 0.
 
 Every mismatch is also recorded for good in the ledger `/orcd/data/dandi/001/backup/checksum_mismatches.tsv`,
 one tab-separated line per event: `time`, `event`, `key`, `path`, `observed`, `expected` and `job` (the
 SLURM job, `{array job}_{task}`, whose log has the rest, or `manual`). The events are `etag-mismatch` and
-`size-mismatch` when a blob is found not to match, `repaired` or `repair-failed` after `--repair` copies it
-again, and `resolved` when a later run finds it matching without that, the backup having copied it again.
-A mismatch still unresolved is not recorded again by the runs that find it unchanged. The ledger is never
+`size-mismatch` when a blob is found not to match, `deleted` or `delete-failed` when its copy is deleted for
+the blob backup to copy again, `repaired` or `repair-failed` after `--repair` copies it again, and `resolved`
+when a later run finds it matching without that, the backup having copied it again. A mismatch still
+unresolved is not recorded again by the runs that find it unchanged, but its copy is deleted, and
+`deleted` recorded, every time. The ledger is never
 pruned; DANDI Compute's runner publishes it to the `checksum-mismatches` branch of
 [its global logs](https://github.com/dandi-compute/dandi-compute-global-logs/blob/checksum-mismatches/checksum-mismatches.tsv).
 

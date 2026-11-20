@@ -80,6 +80,11 @@ def _s3backup_dandi_verify_blobs() -> None:
     verify_dandi_blobs()
 
 
+# The exit code of `verify-checksums` when it found copies that do not match and deleted them, and had no other
+# problem: DANDI Compute's Check backup workflow tells it from other failures by this code.
+_CHECKSUM_MISMATCH_EXIT_CODE = 3
+
+
 # s3backup dandi verify-checksums <int>
 @_s3backup_dandi.command(name="verify-checksums")
 @click.argument("task_id", type=click.IntRange(0, 15))
@@ -99,7 +104,10 @@ def _s3backup_dandi_verify_blobs() -> None:
     "--repair",
     is_flag=True,
     default=False,
-    help="Copy a blob again from the bucket when its local copy does not match.",
+    help=(
+        "Copy a blob again from the bucket when its local copy does not match. Without it, that copy and its "
+        "cached checksum are deleted, for the next blob backup to copy afresh."
+    ),
 )
 def _s3backup_dandi_verify_checksums(
     task_id: int, rehash_older_than_days: float | None = None, repair: bool = False
@@ -109,12 +117,17 @@ def _s3backup_dandi_verify_checksums(
 
     Each blob's ETag is computed as DANDI uploads it and compared with the ETag of its object in the bucket.
     The ETag is cached beside the blob in `.{blob_id}.checksum`. Each mismatch, and what became of it, is
-    recorded in the ledger /orcd/data/dandi/001/backup/checksum_mismatches.tsv. Exits non-zero if a blob does
-    not match (and was not repaired) or part of the bucket could not be listed.
+    recorded in the ledger /orcd/data/dandi/001/backup/checksum_mismatches.tsv. A copy that does not match is
+    deleted, with its cached checksum, for the next blob backup to copy afresh (or copied again with --repair).
+
+    Exits 1 if part of the bucket could not be listed or a copy that does not match could be neither deleted
+    nor repaired, otherwise 3 if a copy that does not match was deleted, otherwise 0.
     """
     counts = verify_dandi_blob_checksums(task_id=task_id, rehash_older_than_days=rehash_older_than_days, repair=repair)
     if counts.unrepaired or counts.unlisted_prefixes:
         raise SystemExit(1)
+    if counts.deleted:
+        raise SystemExit(_CHECKSUM_MISMATCH_EXIT_CODE)
 
 
 # s3backup dandi cleanup-misplaced-blobs

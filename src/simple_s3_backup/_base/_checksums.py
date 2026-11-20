@@ -1,9 +1,11 @@
 """
 Verifying the content of the blob mirror against the S3 bucket.
 
-The blob backup copies with ``s5cmd cp --if-size-differ --if-source-newer``, which compares only sizes
-and times, so a copy of the right size with the wrong content is never replaced. This checks the
-content of every mirrored blob against the ETag of its object in the bucket.
+The blob backup copies with ``s5cmd cp --if-size-differ --if-source-newer``. Given both, s5cmd lets the
+last, ``--if-source-newer``, decide, so a local copy, being newer than its object, is never replaced
+whatever its size or content, while a missing one is always copied. This checks the content of every
+mirrored blob against the ETag of its object in the bucket, and deletes a copy that does not match
+(with its cached checksum), so that the next blob backup copies it afresh.
 
 DANDI uploads every blob in parts (``DandiETag`` in dandischema), so its ETag is the MD5 of the MD5s
 of its parts, followed by ``-`` and the number of parts. The parts are 64 MiB, or larger for a file
@@ -77,12 +79,14 @@ class VerificationCounts:
     unverifiable: int = 0
     mismatched: list[str] = dataclasses.field(default_factory=list)
     repaired: list[str] = dataclasses.field(default_factory=list)
+    deleted: list[str] = dataclasses.field(default_factory=list)
     not_in_bucket: list[str] = dataclasses.field(default_factory=list)
     unlisted_prefixes: list[str] = dataclasses.field(default_factory=list)
 
     @property
     def unrepaired(self) -> int:
-        return len(self.mismatched) - len(self.repaired)
+        """The mismatches left as they were: neither copied again by ``--repair`` nor deleted."""
+        return len(self.mismatched) - len(self.repaired) - len(self.deleted)
 
 
 def is_checksum_cache(path: pathlib.Path | str) -> bool:
@@ -222,6 +226,10 @@ class Ledger:
 
     - ``etag-mismatch`` or ``size-mismatch``: the local copy does not match. One still unresolved is not
       recorded again when a later run finds it unchanged.
+    - ``deleted``: the copy that does not match, and its cached checksum, were deleted, so the next blob
+      backup copies it afresh. Recorded every time a copy is deleted, with the mismatch's observed and
+      expected values. The mismatch stays unresolved until a later run finds the new copy matching.
+    - ``delete-failed``: the copy that does not match could not be deleted.
     - ``repaired``: ``--repair`` copied it again and it now matches.
     - ``repair-failed``: ``--repair`` copied it again and it still does not match.
     - ``resolved``: a later run found it matching without ``--repair``, the blob backup having copied it again.
@@ -304,7 +312,12 @@ def verify_object(
     counts: VerificationCounts,
     ledger: Ledger,
 ) -> None:
-    """Check the local copy of one object against its ETag, and copy it again on a mismatch if ``repair``."""
+    """
+    Check the local copy of one object against its ETag.
+
+    On a mismatch, copy it again if ``repair``, and otherwise delete it, with its cached checksum, for the
+    next blob backup to copy afresh.
+    """
     stat = blob_path.stat()
     if time.time() - stat.st_ctime < RECENT_SECONDS:
         counts.recent += 1
@@ -336,6 +349,9 @@ def verify_object(
     counts.mismatched.append(f"{s3_object.key}: {reason}")
     ledger.record(event, s3_object.key, blob_path, observed=observed, expected=expected)
     if not repair:
+        _delete_copy(
+            s3_object, blob_path, reason=reason, observed=observed, expected=expected, counts=counts, ledger=ledger
+        )
         return
 
     # Without --if-size-differ or --if-source-newer, s5cmd copies over the file whatever it holds.
@@ -357,6 +373,34 @@ def verify_object(
         ledger.record("repair-failed", s3_object.key, blob_path, observed=etag, expected=s3_object.etag)
 
 
+def _delete_copy(
+    s3_object: S3Object,
+    blob_path: pathlib.Path,
+    *,
+    reason: str,
+    observed: object,
+    expected: object,
+    counts: VerificationCounts,
+    ledger: Ledger,
+) -> None:
+    """
+    Delete a copy that does not match, and its cached checksum, so the next blob backup copies it afresh.
+
+    That backup's ``s5cmd cp --if-size-differ --if-source-newer`` never replaces a copy newer than its object,
+    as every copy it made is, but copies one that is missing whatever the conditions.
+    """
+    try:
+        blob_path.unlink(missing_ok=True)
+        checksum_cache_path(blob_path).unlink(missing_ok=True)
+    except OSError as error:
+        print(f"[NOT DELETED] {s3_object.key}: {reason}; could not delete {blob_path} ({error})", flush=True)
+        ledger.record("delete-failed", s3_object.key, blob_path, observed=f"error: {error}", expected=expected)
+        return
+    counts.deleted.append(s3_object.key)
+    print(f"[DELETED] {s3_object.key}: {reason}; the next blob backup copies it again", flush=True)
+    ledger.record("deleted", s3_object.key, blob_path, observed=observed, expected=expected)
+
+
 def verify_dandi_blob_checksums(
     task_id: int,
     rehash_older_than_days: float | None = None,
@@ -375,7 +419,8 @@ def verify_dandi_blob_checksums(
         not changed since. 0 reads every file again. By default a cached checksum is trusted while the file
         keeps the modification time it had.
     repair : bool, default False
-        Copy a blob again from the bucket when its local copy does not match.
+        Copy a blob again from the bucket when its local copy does not match. Without it, that copy and its
+        cached checksum are deleted, and the next blob backup copies it afresh.
     ledger_path : pathlib.Path, optional
         The ledger each mismatch, and what became of it, is recorded in (see ``Ledger``). Defaults to
         ``LEDGER_PATH``.
@@ -419,7 +464,8 @@ def verify_dandi_blob_checksums(
     print(
         f"\nHead {head} in {blobs_directory}:\n"
         f"  {counts.verified} match the bucket\n"
-        f"  {len(counts.mismatched)} do not match, of which {len(counts.repaired)} were copied again and now match\n"
+        f"  {len(counts.mismatched)} do not match, of which {len(counts.repaired)} were copied again and now match"
+        f" and {len(counts.deleted)} were deleted for the next blob backup to copy again\n"
         f"  {counts.recent} changed in the last hour, left for the next run\n"
         f"  {counts.unverifiable} were uploaded in other parts than DANDI's, so cannot be verified\n"
         f"  {counts.not_mirrored} are in the bucket but not mirrored yet\n"
