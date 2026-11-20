@@ -72,15 +72,13 @@ complete copy, so no data is lost; anything not yet fully copied is reported and
 
 # Verifying the content of the blob mirror
 
-The blob backup copies with `s5cmd cp --if-size-differ --if-source-newer`. Given both, s5cmd (v2.3.0) lets
-the last, `--if-source-newer`, decide, so a local copy, being newer than its object, is never replaced
-whatever its size or content, while a missing one is always copied. `verify-checksums` compares the
-content of every mirrored blob with its object in the bucket, one head (first hex digit) at a time, and
-deletes a copy that does not match, with its cached checksum, so that the next blob backup copies it afresh:
+The blob backup copies with `s5cmd cp --if-size-differ --if-source-newer`, which compares only sizes and
+times: a copy of the right size with the wrong content is never replaced. `verify-checksums` compares the
+content of every mirrored blob with its object in the bucket, one head (first hex digit) at a time:
 
 ```bash
 s3backup dandi verify-checksums <task_id>                   # 0-15, as for `s3backup dandi blobs`
-s3backup dandi verify-checksums <task_id> --repair          # copy each blob that does not match again at once
+s3backup dandi verify-checksums <task_id> --repair          # also copy each blob that does not match again
 s3backup dandi verify-checksums <task_id> --rehash-older-than 180   # re-read files checked over 180 days ago
 ```
 
@@ -97,6 +95,9 @@ since are read again. `--rehash-older-than DAYS` re-reads files whose checksum w
 that (by the cache file's change time), to catch damage on disk that leaves the modification time alone;
 `0` re-reads everything. Each cache is one more file next to each blob, which doubles the file count of the
 blob directories. The dashboard and `cleanup-misplaced-blobs` skip them.
+
+A copy that does not match is deleted, with its cached checksum. The blob backup copies a missing blob
+whatever its conditions, so the next one copies it afresh.
 
 A file changed in the last hour may still be being written by the backup, so it is left for the next run.
 The command also reports the blobs not mirrored yet and those mirrored but no longer in the bucket. It

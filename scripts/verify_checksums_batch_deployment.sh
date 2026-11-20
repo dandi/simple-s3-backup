@@ -18,8 +18,7 @@
 # read bandwidth from the jobs that use them.
 #
 # A copy that does not match the bucket is deleted, with its cached checksum, and the next blob
-# backup copies it afresh: its `--if-source-newer` never replaces a copy it made, but copies one that
-# is missing. The task then exits 3, which the runner's Check backup workflow reports as a checksum
+# backup copies it afresh, as it copies any blob that is missing. The task then exits 3, which the runner's Check backup workflow reports as a checksum
 # mismatch, naming each blob from the `[DELETED]` lines of this log. It exits 1 when part of the
 # bucket could not be listed or a copy could not be deleted. To copy the blobs again at once instead:
 #     s3backup dandi verify-checksums <task_id> --repair

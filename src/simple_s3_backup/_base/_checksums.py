@@ -1,11 +1,9 @@
 """
 Verifying the content of the blob mirror against the S3 bucket.
 
-The blob backup copies with ``s5cmd cp --if-size-differ --if-source-newer``. Given both, s5cmd lets the
-last, ``--if-source-newer``, decide, so a local copy, being newer than its object, is never replaced
-whatever its size or content, while a missing one is always copied. This checks the content of every
-mirrored blob against the ETag of its object in the bucket, and deletes a copy that does not match
-(with its cached checksum), so that the next blob backup copies it afresh.
+The blob backup copies with ``s5cmd cp --if-size-differ --if-source-newer``, which compares only sizes
+and times, so a copy of the right size with the wrong content is never replaced. This checks the
+content of every mirrored blob against the ETag of its object in the bucket.
 
 DANDI uploads every blob in parts (``DandiETag`` in dandischema), so its ETag is the MD5 of the MD5s
 of its parts, followed by ``-`` and the number of parts. The parts are 64 MiB, or larger for a file
@@ -14,6 +12,9 @@ that would otherwise need 10,000 parts or more. The ETag of the local copy is co
 Computing it reads the whole file, so the ETag alone is cached next to the blob, in
 ``.{blob_id}.checksum``, with the blob's modification time. A later run reuses it while the blob keeps
 that modification time, unless the cache is older than it is told to trust.
+
+A copy that does not match is deleted, with its cached checksum, since the blob backup copies a missing
+blob whatever its conditions, so that the next blob backup copies it afresh.
 
 Every mismatch, and what became of it, is also recorded for good in a ledger (see ``Ledger``).
 """
@@ -386,8 +387,8 @@ def _delete_copy(
     """
     Delete a copy that does not match, and its cached checksum, so the next blob backup copies it afresh.
 
-    That backup's ``s5cmd cp --if-size-differ --if-source-newer`` never replaces a copy newer than its object,
-    as every copy it made is, but copies one that is missing whatever the conditions.
+    Whatever the conditions of that backup's ``s5cmd cp``, it copies a blob that is missing, while a copy of the
+    right size with the wrong content can stay as it is.
     """
     try:
         blob_path.unlink(missing_ok=True)
