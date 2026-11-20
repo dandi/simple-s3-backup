@@ -35,7 +35,9 @@ def backup_dandi_blobs(task_id: int) -> None:
             blob_subdirectory = f"{top_blob_hexcode}{sub_blob_hexcode_1:01x}{sub_blob_hexcode_2:01x}"
             source = f"s3://dandiarchive/blobs/{blob_subdirectory}/*"
             destination = f"{blobs_backup_directory}/{blob_subdirectory}/"
-            command = f"s5cmd cp --if-size-differ --if-source-newer {source} {destination}"
+            # Size alone: blobs never change once uploaded, and s5cmd lets the last condition decide, so
+            # with --if-source-newer the newer local mtime would keep a truncated copy forever.
+            command = f"s5cmd cp --if-size-differ {source} {destination}"
             print(command)
             _deploy_subprocess(command=command, ignore_errors=True)
 

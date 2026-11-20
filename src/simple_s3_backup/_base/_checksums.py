@@ -1,9 +1,9 @@
 """
 Verifying the content of the blob mirror against the S3 bucket.
 
-The blob backup copies with ``s5cmd cp --if-size-differ --if-source-newer``, which compares only sizes
-and times, so a copy of the right size with the wrong content is never replaced. This checks the
-content of every mirrored blob against the ETag of its object in the bucket.
+The blob backup copies with ``s5cmd cp --if-size-differ``, which compares only sizes, so a copy of
+the right size with the wrong content is never replaced. This checks the content of every mirrored
+blob against the ETag of its object in the bucket.
 
 DANDI uploads every blob in parts (``DandiETag`` in dandischema), so its ETag is the MD5 of the MD5s
 of its parts, followed by ``-`` and the number of parts. The parts are 64 MiB, or larger for a file
@@ -346,7 +346,7 @@ def verify_object(
     if not repair:
         return
 
-    # Without --if-size-differ or --if-source-newer, s5cmd copies over the file whatever it holds.
+    # Without --if-size-differ, s5cmd copies over the file whatever it holds.
     _deploy_subprocess(command=f"s5cmd cp s3://{_BUCKET}/{s3_object.key} {blob_path}", ignore_errors=True)
     try:
         stat = blob_path.stat()

@@ -24,4 +24,6 @@ Added `s3backup dandi verify-checksums <task_id> [--repair] [--rehash-older-than
 
 ## Fixes
 
+The blob backup copies with `s5cmd cp --if-size-differ` alone, without `--if-source-newer`. s5cmd lets the last of these conditions decide, so the local copy, always newer than its object in the bucket, was never copied again, even when truncated. Blobs never change once uploaded, so a size that differs is enough to copy one again.
+
 The blob backup and verify jobs turn on `set -u` only after `module load` and `conda activate`. With it first, the cluster's module scripts stopped every task within a second on the unset `MODULEPATH`, so no blob was backed up from 2026-06-25 until this fix.

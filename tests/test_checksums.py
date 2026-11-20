@@ -383,3 +383,15 @@ def test_recent_files_not_in_the_bucket_are_left_for_the_next_run(mirror, monkey
     counts = _checksums.verify_dandi_blob_checksums(task_id=0)
     assert counts.not_in_bucket == []
     assert not _checksums.NOT_IN_BUCKET_RECORD_PATH.exists()
+
+
+def test_backup_dandi_blobs_copies_on_size_alone(monkeypatch):
+    from simple_s3_backup._base import _dandi
+
+    commands = []
+    monkeypatch.setattr(_dandi, "_deploy_subprocess", lambda command, ignore_errors: commands.append(command))
+    _dandi.backup_dandi_blobs(task_id=2)
+
+    assert len(commands) == 256
+    assert all(command.startswith("s5cmd cp --if-size-differ s3://dandiarchive/blobs/2") for command in commands)
+    assert not any("--if-source-newer" in command for command in commands)
