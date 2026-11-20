@@ -97,17 +97,24 @@ that (by the cache file's change time), to catch damage on disk that leaves the 
 `0` re-reads everything. Each cache is one more file next to each blob, which doubles the file count of the
 blob directories. The dashboard and `cleanup-misplaced-blobs` skip them.
 
+A copy that does not match is deleted, with its cached checksum. The blob backup copies a missing blob
+whatever its conditions, so the next one copies it afresh.
+
 A file changed in the last hour may still be being written by the backup, so it is left for the next run.
 The command also reports the blobs not mirrored yet and those mirrored but no longer in the bucket. It
-exits non-zero when a blob does not match (and `--repair` did not fix it) or part of the bucket could not
-be listed.
+exits 1 when part of the bucket could not be listed or a copy that does not match could be neither deleted
+nor repaired, otherwise 3 when it deleted a copy that does not match (DANDI Compute's Check backup workflow
+reports that exit code as a checksum mismatch, with the blobs named in the log's `[MISMATCH DELETED]` lines), and
+otherwise 0.
 
 Every mismatch is also recorded for good in the ledger `/orcd/data/dandi/001/backup/checksum_mismatches.tsv`,
 one tab-separated line per event: `time`, `event`, `key`, `path`, `observed`, `expected` and `job` (the
 SLURM job, `{array job}_{task}`, whose log has the rest, or `manual`). The events are `etag-mismatch` and
-`size-mismatch` when a blob is found not to match, `repaired` or `repair-failed` after `--repair` copies it
-again, and `resolved` when a later run finds it matching without that, the backup having copied it again.
-A mismatch still unresolved is not recorded again by the runs that find it unchanged. The ledger is never
+`size-mismatch` when a blob is found not to match, `deleted` or `delete-failed` when its copy is deleted for
+the blob backup to copy again, `repaired` or `repair-failed` after `--repair` copies it again, and `resolved`
+when a later run finds it matching without that, the backup having copied it again. A mismatch still
+unresolved is not recorded again by the runs that find it unchanged, but its copy is deleted, and
+`deleted` recorded, every time. The ledger is never
 pruned; DANDI Compute's runner publishes it to the `checksum-mismatches` branch of
 [its global logs](https://github.com/dandi-compute/dandi-compute-global-logs/blob/checksum-mismatches/checksum-mismatches.tsv).
 

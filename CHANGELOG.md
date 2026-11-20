@@ -20,6 +20,8 @@ The blob backup job requeues preempted tasks, logs each task, and fails loudly w
 
 Added `s3backup dandi verify-checksums <task_id> [--repair] [--rehash-older-than DAYS]`, which compares the content of each mirrored blob with the ETag of its object in the bucket, caching each blob's ETag beside it in `.{blob_id}.checksum` and recording every mismatch and its outcome in the ledger `/orcd/data/dandi/001/backup/checksum_mismatches.tsv`, and `verify_checksums_batch_deployment.sh` to run it for every head as a job. The dashboard and `cleanup-misplaced-blobs` skip the cached checksums.
 
+`s3backup dandi verify-checksums` deletes a mirrored blob that does not match the bucket, with its cached checksum, so that the next blob backup copies it afresh, records `deleted` (or `delete-failed`) in the ledger, and exits 3 when it did, for DANDI Compute's Check backup workflow to report it as a checksum mismatch. The blob backup never replaced a copy of the right size with the wrong content. `--repair` still copies it again at once instead.
+
 `s3backup dandi verify-checksums` now deletes a mirrored blob once it has been missing from the bucket for 183 days (about 6 months), recording when each was first found missing, and what became of it, in `/orcd/data/dandi/001/backup/not_in_bucket.tsv`; a blob back in the bucket is forgotten. It also removes the partial downloads (`{blob_id}{random digits}`) that a blob backup task killed by SLURM leaves behind, once they have not changed for a day, instead of reporting them as not in the bucket. Nothing is deleted under a prefix whose listing failed.
 
 ## Fixes
