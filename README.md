@@ -117,26 +117,14 @@ day's task for its head still running leaves the head to it.
 
 ## Blobs no longer in the bucket
 
-A mirrored file that is not in the bucket's listing of its prefix is one of two things, and only a prefix
-listed in full is considered, so nothing is deleted on the strength of a listing that failed.
+Mirrored files missing from a fully listed prefix are handled in one of two ways:
 
-- **A partial download.** `s5cmd cp` downloads each blob into a temporary file beside it, named after the
-  blob with a random number of up to 10 digits appended, and renames it once the download is complete. A
-  backup task killed by SLURM (at its time limit, or preempted) leaves it behind. A file named as a blob's
-  UUID followed by 1 to 10 digits is removed once it has not changed for a day: no blob backup task runs
-  for more than 12 hours, and a live download keeps writing to its file. These are not reported as blobs
-  missing from the bucket, nor recorded.
-- **A blob deleted from the archive.** It is kept for 183 days (about 6 months) from when it was first
-  found missing, then deleted from the mirror with its cached checksum, so the mirror is a delayed backup
-  of whatever DANDI deletes. A blob back in the bucket before then is forgotten, and starts afresh should it
-  go again. A file changed in the last hour is left for the next run, as the backup may have copied it
-  after the listing.
+- **Partial downloads** (a blob's UUID followed by 1-10 digits) are temporary files that s5cmd leaves
+  behind when SLURM kills a backup task. They are removed once unchanged for a day.
+- **Blobs deleted from the archive** are kept for 183 days (about 6 months) from when they were first
+  found missing, then deleted with their cached checksum. A blob back in the bucket before then is
+  forgotten.
 
-When each blob was first found missing, and what became of it, is recorded in
-`/orcd/data/dandi/001/backup/not_in_bucket.tsv`, shared by every head like the ledger and written under
-the same kind of lock: one tab-separated line per event, `time`, `event`, `key`, `path` and `job`. The
-events are `missing` (first found missing; its time starts the 183 days), `reappeared` (back in the
-bucket), `deleted` (deleted from the mirror, its time up) and `gone` (no longer in the mirror either,
-removed by other means). A blob is pending while its last event is `missing`. One shared file, rather than
-one beside each blob, costs no inodes. DANDI Compute's runner publishes it to the `not-in-bucket` branch of
-[its global logs](https://github.com/dandi-compute/dandi-compute-global-logs/blob/not-in-bucket/not-in-bucket.tsv).
+The record of the latter is `/orcd/data/dandi/001/backup/not_in_bucket.tsv` (`time`, `event`, `key`,
+`path`, `job`; events `missing`, `reappeared`, `deleted`, `gone`), published to the `not-in-bucket` branch of
+[DANDI Compute's global logs](https://github.com/dandi-compute/dandi-compute-global-logs/blob/not-in-bucket/not-in-bucket.tsv).
