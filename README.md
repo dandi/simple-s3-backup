@@ -72,9 +72,10 @@ complete copy, so no data is lost; anything not yet fully copied is reported and
 
 # Verifying the content of the blob mirror
 
-The blob backup copies with `s5cmd cp --if-size-differ --if-source-newer`, which compares only sizes and
-times: a copy of the right size with the wrong content is never replaced. `verify-checksums` compares the
-content of every mirrored blob with its object in the bucket, one head (first hex digit) at a time:
+The blob backup copies with `s5cmd cp --if-size-differ`, which compares only sizes (blobs never change
+once uploaded, so a truncated copy is copied again): a copy of the right size with the wrong content is
+never replaced. `verify-checksums` compares the content of every mirrored blob with its object in the
+bucket, one head (first hex digit) at a time:
 
 ```bash
 s3backup dandi verify-checksums <task_id>                   # 0-15, as for `s3backup dandi blobs`

@@ -210,3 +210,15 @@ def test_caches_are_not_counted_as_objects(mirror):
     for blob in ("01234567-good", "01234567-corrupt"):
         (target / "345" / blob).write_bytes((blobs_directory / "012/345" / blob).read_bytes())
     assert _blob_subdirectory_is_fully_copied(source=blobs_directory / "012", target=target) == (True, "")
+
+
+def test_backup_dandi_blobs_copies_on_size_alone(monkeypatch):
+    from simple_s3_backup._base import _dandi
+
+    commands = []
+    monkeypatch.setattr(_dandi, "_deploy_subprocess", lambda command, ignore_errors: commands.append(command))
+    _dandi.backup_dandi_blobs(task_id=2)
+
+    assert len(commands) == 256
+    assert all(command.startswith("s5cmd cp --if-size-differ s3://dandiarchive/blobs/2") for command in commands)
+    assert not any("--if-source-newer" in command for command in commands)
