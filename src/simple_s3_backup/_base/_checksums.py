@@ -33,7 +33,7 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree
 
-from ._globals import BLOBS_HEAD_TO_PARTITION
+from ._globals import BLOBS_HEAD_TO_PARTITION, MIRROR_ROOT
 from ._not_in_bucket import (
     GRACE_DAYS,
     NOT_IN_BUCKET_RECORD_PATH,
@@ -47,7 +47,7 @@ from ._utils import _deploy_subprocess
 _BUCKET = "dandiarchive"
 _BUCKET_URL = f"https://{_BUCKET}.s3.amazonaws.com"
 _S3_NAMESPACE = {"s3": "http://s3.amazonaws.com/doc/2006-03-01/"}
-_MIRROR_ROOT = pathlib.Path("/orcd/data/dandi")
+_MIRROR_ROOT = MIRROR_ROOT
 
 _DEFAULT_PART_SIZE = 64 * 2**20
 _MAX_PARTS = 10_000

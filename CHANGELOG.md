@@ -24,6 +24,12 @@ Added `s3backup dandi verify-checksums <task_id> [--repair] [--rehash-older-than
 
 `s3backup dandi verify-checksums` now deletes a mirrored blob once it has been missing from the bucket for 183 days (about 6 months), recording when each was first found missing, and what became of it, in `/orcd/data/dandi/001/backup/not_in_bucket.tsv`; a blob back in the bucket is forgotten. It also removes the partial downloads (`{blob_id}{random digits}`) that a blob backup task killed by SLURM leaves behind, once they have not changed for a day, instead of reporting them as not in the bucket. Nothing is deleted under a prefix whose listing failed.
 
+`src/simple_s3_backup/partitions.json` is the single source of truth for the mirror's root, its partitions and the partition of each blob and Zarr head, shipped with the package; the code, dandi-compute-core and dandi-compute-page read it instead of keeping their own copies.
+
+The dashboard lists the bucket's blobs one head at a time with `s5cmd du`, takes the `blobs/` total from their sum instead of listing it a second time, and writes each head's size and object count in the bucket, its assigned partition and its number of sub-directories on each partition to `data/blob_heads.json` of dandi/backup-status, with a Blob Heads table in its README. It no longer walks the mirror's blobs (a `stat` of every file and a `du` of each partition's `blobs/`), so the Content table shows no local figures for `blobs/`. A daily cache written before this is recomputed.
+
+`s3backup dandi verify-blobs` and the dashboard count each head's sub-directories with the same function. `verify-blobs` now also fails when a head is missing from its assigned partition, not only when a whole partition is empty, and runs daily from dandi-compute-runner's `backup.sh verify-blobs` as `DANDI-Verify-Blobs`.
+
 ## Fixes
 
 The blob backup copies with `s5cmd cp --if-size-differ` alone, without `--if-source-newer`. s5cmd lets the last of these conditions decide, so the local copy, always newer than its object in the bucket, was never copied again, even when truncated. Blobs never change once uploaded, so a size that differs is enough to copy one again.

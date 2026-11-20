@@ -21,9 +21,10 @@ the only crontab installed on the cluster's login node. It submits each of them 
 0 18 * * * /orcd/data/dandi/001/dandi-compute/dandi-compute-runner/launcher/backup.sh nonblobs > /dev/null 2>&1
 0 6 * * * /orcd/data/dandi/001/dandi-compute/dandi-compute-runner/launcher/backup.sh dashboard > /dev/null 2>&1
 0 10 * * * /orcd/data/dandi/001/dandi-compute/dandi-compute-runner/launcher/backup.sh checksums > /dev/null 2>&1
+30 11 * * * /orcd/data/dandi/001/dandi-compute/dandi-compute-runner/launcher/backup.sh verify-blobs > /dev/null 2>&1
 ```
 
-`backup.sh` names the jobs (`DANDI-Backup-Blobs`, `DANDI-Backup-Nonblobs`, `DANDI-Update-Backup-Dashboard`, `DANDI-Verify-Checksums`),
+`backup.sh` names the jobs (`DANDI-Backup-Blobs`, `DANDI-Backup-Nonblobs`, `DANDI-Update-Backup-Dashboard`, `DANDI-Verify-Checksums`, `DANDI-Verify-Blobs`),
 keeps the per-kind `flock` around `sbatch`, and records each submission in DANDI Compute's global logs. It
 passes `--output` and `--error` itself, which take precedence over the `#SBATCH` ones in these scripts, so
 each job's output goes to `/orcd/data/dandi/001/backup/logs/{job name}-{job ID}.log` (or
@@ -34,19 +35,61 @@ The scripts are run from cron's environment, which sets neither `MODULEPATH` nor
 turns on `set -u` only after `module load` and `conda activate`, since the cluster's module scripts read
 `MODULEPATH` and bash would otherwise stop the job at once.
 
-`verify_blobs_backup_deployment.sh` is not scheduled. To run the partition check after a blob backup, queue
-it behind the array, or run it by hand:
-
-```bash
-sbatch --dependency=afterany:<array job ID> /orcd/data/dandi/001/backup/simple-s3-backup/scripts/verify_blobs_backup_deployment.sh
-```
+`verify_blobs_backup_deployment.sh` runs `s3backup dandi verify-blobs` every morning at 11:30, once the
+22:00 blob array's 12 hours are up. It fails, and the Check backup workflow emails its log's tail, when a
+blob head is missing from its assigned partition or misplaced on another one. It only lists the top of each
+partition's `blobs/` directory, never the files. It deletes nothing: see below to fix a misplaced head. It
+can also be run by hand:
 
 ```bash
 s3backup dandi verify-blobs
 ```
 
-Submitted on its own, it writes its logs to `/orcd/data/dandi/001/backup/logs/`, which must exist
-(`backup.sh` creates it).
+
+# Partitions
+
+[`src/simple_s3_backup/partitions.json`](src/simple_s3_backup/partitions.json) is the single source of
+truth for where the mirror is (`mirror_root`), its partitions, and which partition holds each blob head and
+Zarr head (the first hex digit of the blob ID, or of the Zarr ID). A blob is mirrored at
+`{mirror_root}/{partition}/s3dandiarchive/blobs/{id[0:3]}/{id[3:6]}/{id}`. The backup, `verify-blobs`,
+`cleanup-misplaced-blobs`, `verify-checksums` and the dashboard read it from the installed package, and
+dandi-compute-core and dandi-compute-page read the same file, from
+`https://raw.githubusercontent.com/dandi/simple-s3-backup/main/src/simple_s3_backup/partitions.json` or from
+this checkout on the cluster. To move a head, change it there, and nowhere else.
+It also holds `not_in_bucket_grace_days`, how long `verify-checksums` keeps a mirrored blob that is no
+longer in the bucket before deleting it, which dandi-compute-runner's report of those blobs reads too.
+
+
+# Dashboard
+
+`s3backup dandi dashboard` writes the README of [dandi/backup-status](https://github.com/dandi/backup-status)
+and, beside it, `data/disk.json`, `data/content.json` and `data/blob_heads.json`. The last is what each blob
+head should take, from the bucket, and where it is, from directory listings only, so that nothing has to walk
+the mirror's files to know it:
+
+```json
+{
+  "updated": "2026-11-20T06:12:00-05:00",
+  "partitions": {"001": {"size_bytes": 0, "used_bytes": 0}, "002": {"size_bytes": 0, "used_bytes": 0}},
+  "heads": [
+    {"head": "0", "partition": "001", "remote_bytes": 0, "remote_objects": 0,
+     "subdirectories": {"001": 4096, "002": 0}}
+  ]
+}
+```
+
+- `updated`: when it was written, in ISO 8601 with the offset of America/New_York.
+- `partitions`: each partition's size and used bytes, from `df`.
+- `heads`: one entry per head, `0` to `f` in order: the partition `partitions.json` assigns it, the size
+  and object count of `s3://dandiarchive/blobs/{head}*` from `s5cmd du`, and the number of `blobs/{head}??`
+  directories on each partition. A head is misplaced when another partition has any of them, and missing
+  when its assigned partition has none.
+
+The bucket's `blobs/` is listed once, one head at a time, and its total in the Content table is the sum of
+the heads. The mirror's `blobs/` is never walked, on either partition: the Content table gives it no local
+figures (`—`), and the Blob Heads table reports what each head should take instead, with whether it is on its
+assigned partition. Everything else in the bucket, on partition 001, is small and still measured file by file.
+The figures are cached for the day in `/orcd/data/dandi/001/display_cache/`.
 
 
 # Fixing blob heads stranded on the wrong partition
