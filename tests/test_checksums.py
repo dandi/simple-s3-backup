@@ -1,9 +1,10 @@
+import datetime
 import hashlib
 import pathlib
 
 import pytest
 
-from simple_s3_backup._base import _checksums
+from simple_s3_backup._base import _checksums, _not_in_bucket
 from simple_s3_backup._base._dandi import _blob_subdirectory_is_fully_copied
 from simple_s3_backup._base._display import _get_local_size_in_bytes_and_object_count
 
@@ -54,6 +55,7 @@ def mirror(tmp_path, monkeypatch):
     """A mirror of head 0 with one blob of each kind, and the bucket listing it is checked against."""
     monkeypatch.setattr(_checksums, "_MIRROR_ROOT", tmp_path)
     monkeypatch.setattr(_checksums, "LEDGER_PATH", tmp_path / "checksum_mismatches.tsv")
+    monkeypatch.setattr(_checksums, "NOT_IN_BUCKET_RECORD_PATH", tmp_path / "not_in_bucket.tsv")
     monkeypatch.setattr(_checksums, "RECENT_SECONDS", 0)
     blobs_directory = tmp_path / "001" / "s3dandiarchive" / "blobs"
 
@@ -210,3 +212,174 @@ def test_caches_are_not_counted_as_objects(mirror):
     for blob in ("01234567-good", "01234567-corrupt"):
         (target / "345" / blob).write_bytes((blobs_directory / "012/345" / blob).read_bytes())
     assert _blob_subdirectory_is_fully_copied(source=blobs_directory / "012", target=target) == (True, "")
+
+
+DAY = 24 * 3600
+UUID = "0abcdef0-1234-4567-89ab-0123456789ab"
+
+
+def test_is_partial_download():
+    assert _not_in_bucket.is_partial_download(f"{UUID}7")
+    assert _not_in_bucket.is_partial_download(pathlib.Path(f"blobs/0ab/cde/{UUID}2887375472"))
+    assert not _not_in_bucket.is_partial_download(UUID)  # The blob itself
+    assert not _not_in_bucket.is_partial_download(f"{UUID}28873754721")  # More digits than a uint32 has
+    assert not _not_in_bucket.is_partial_download(f".{UUID}.checksum")
+    assert not _not_in_bucket.is_partial_download(f"{UUID}-1")
+
+
+def _record_events() -> list[tuple[str, str]]:
+    """The record's lines after its header, as (event, key)."""
+    lines = _checksums.NOT_IN_BUCKET_RECORD_PATH.read_text().splitlines()
+    assert lines[0].split("\t") == list(_not_in_bucket._RECORD_COLUMNS)
+    return [tuple(line.split("\t")[1:3]) for line in lines[1:]]
+
+
+def _backdate_record(days: float) -> None:
+    """Move every event of the record ``days`` into the past, as if it had been recorded then."""
+    lines = _checksums.NOT_IN_BUCKET_RECORD_PATH.read_text().splitlines()
+    for index, line in enumerate(lines[1:], start=1):
+        fields = line.split("\t")
+        then = datetime.datetime.fromisoformat(fields[0]) - datetime.timedelta(days=days)
+        lines[index] = "\t".join([then.isoformat(), *fields[1:]])
+    _checksums.NOT_IN_BUCKET_RECORD_PATH.write_text("\n".join(lines) + "\n")
+
+
+def test_not_in_bucket_is_recorded_once_and_deleted_after_the_grace_period(mirror, capsys):
+    blobs_directory, _ = mirror
+    deleted = blobs_directory / "0ab/cde/0abcdef0-deleted"
+    key = "blobs/0ab/cde/0abcdef0-deleted"
+
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert counts.not_in_bucket == [key]
+    assert _record_events() == [("missing", key)]
+    assert f"[NOT IN BUCKET] {key} (missing since " in capsys.readouterr().out
+
+    # Not recorded again while it stays missing, and kept until the grace period is over.
+    _checksums.checksum_cache_path(deleted).write_text("a stale checksum\n")
+    _backdate_record(days=_not_in_bucket.GRACE_DAYS - 1)
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert counts.not_in_bucket == [key]
+    assert deleted.exists()
+    assert _record_events() == [("missing", key)]
+
+    _backdate_record(days=1)
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert counts.not_in_bucket == []
+    assert not deleted.exists()
+    assert not _checksums.checksum_cache_path(deleted).exists()
+    assert _record_events() == [("missing", key), ("deleted", key)]
+    assert f"[DELETED] {key}" in capsys.readouterr().out
+
+    # Once deleted it is forgotten: the next run records nothing.
+    _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert _record_events() == [("missing", key), ("deleted", key)]
+
+
+@pytest.mark.parametrize(("missing_for", "is_deleted"), [(-1, False), (0, True), (1, True)])
+def test_grace_period_boundary(tmp_path, missing_for, is_deleted):
+    record = _not_in_bucket.NotInBucketRecord(path=tmp_path / "not_in_bucket.tsv")
+    path = tmp_path / "blob"
+    path.write_bytes(b"gone from the bucket")
+    key = "blobs/0ab/cde/blob"
+    record.record("missing", key, path)
+    missing_since = record.missing_since(key)
+
+    counts = _not_in_bucket.NotInBucketCounts()
+    _not_in_bucket.reconcile_prefix(
+        "blobs/0ab/",
+        bucket_keys=set(),
+        unmatched_paths={key: path},
+        record=record,
+        counts=counts,
+        recent_seconds=0,
+        now=missing_since + _not_in_bucket.GRACE_DAYS * DAY + missing_for,
+    )
+    assert path.exists() is not is_deleted
+    assert counts.deleted == ([key] if is_deleted else [])
+    assert counts.kept == ([] if is_deleted else [key])
+
+
+def test_blob_back_in_the_bucket_is_forgotten(mirror, monkeypatch):
+    blobs_directory, contents = mirror
+    key = "blobs/0ab/cde/0abcdef0-deleted"
+    _checksums.verify_dandi_blob_checksums(task_id=0)
+    _backdate_record(days=_not_in_bucket.GRACE_DAYS)
+
+    # Back in the bucket, the blob is forgotten rather than deleted.
+    listing = [_checksums.S3Object(key, len(data), _etag_of_parts(data)) for key, data in contents.items()]
+    listing.append(_checksums.S3Object(key, 20, _etag_of_parts(b"gone from the bucket")))
+    monkeypatch.setattr(
+        _checksums, "list_s3_objects", lambda prefix: [item for item in listing if item.key.startswith(prefix)]
+    )
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert counts.not_in_bucket == []
+    assert (blobs_directory / "0ab/cde/0abcdef0-deleted").exists()
+    assert _record_events() == [("missing", key), ("reappeared", key)]
+
+    # Gone again, its grace period starts afresh.
+    listing.pop()
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert counts.not_in_bucket == [key]
+    assert (blobs_directory / "0ab/cde/0abcdef0-deleted").exists()
+    assert _record_events() == [("missing", key), ("reappeared", key), ("missing", key)]
+
+
+def test_blob_deleted_by_other_means_is_forgotten(mirror):
+    blobs_directory, _ = mirror
+    _checksums.verify_dandi_blob_checksums(task_id=0)
+    (blobs_directory / "0ab/cde/0abcdef0-deleted").unlink()
+    _checksums.verify_dandi_blob_checksums(task_id=0)
+    key = "blobs/0ab/cde/0abcdef0-deleted"
+    assert _record_events() == [("missing", key), ("gone", key)]
+
+
+def test_nothing_is_deleted_under_a_prefix_that_could_not_be_listed(mirror, monkeypatch):
+    blobs_directory, _ = mirror
+    partial = blobs_directory / f"0ab/cde/{UUID}2887375472"
+    partial.write_bytes(b"half a blob")
+    _checksums.verify_dandi_blob_checksums(task_id=0)
+    _backdate_record(days=_not_in_bucket.GRACE_DAYS)
+    monkeypatch.setattr(_not_in_bucket, "STALE_DOWNLOAD_SECONDS", 0)
+
+    listed = _checksums.list_s3_objects
+
+    def fail_for_0ab(prefix):
+        if prefix == "blobs/0ab/":
+            raise TimeoutError("the listing timed out")
+        return listed(prefix)
+
+    monkeypatch.setattr(_checksums, "list_s3_objects", fail_for_0ab)
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert counts.unlisted_prefixes == ["0ab"]
+    assert (blobs_directory / "0ab/cde/0abcdef0-deleted").exists()
+    assert partial.exists()
+    assert _record_events() == [("missing", "blobs/0ab/cde/0abcdef0-deleted")]
+
+
+def test_partial_downloads_are_removed_once_stale(mirror, monkeypatch, capsys):
+    blobs_directory, _ = mirror
+    partial = blobs_directory / f"0ab/cde/{UUID}2887375472"
+    partial.write_bytes(b"half a blob")
+    partial_key = f"blobs/0ab/cde/{UUID}2887375472"
+
+    # One that changed in the last day may still be written, so it is left; neither is a blob missing
+    # from the bucket.
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert partial.exists()
+    assert partial_key not in counts.not_in_bucket
+    assert partial_key not in capsys.readouterr().out
+    assert _record_events() == [("missing", "blobs/0ab/cde/0abcdef0-deleted")]
+
+    monkeypatch.setattr(_not_in_bucket, "STALE_DOWNLOAD_SECONDS", 0)
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert not partial.exists()
+    assert partial_key not in counts.not_in_bucket
+    assert "1 partial downloads left by killed backup tasks were removed" in capsys.readouterr().out
+    assert _record_events() == [("missing", "blobs/0ab/cde/0abcdef0-deleted")]
+
+
+def test_recent_files_not_in_the_bucket_are_left_for_the_next_run(mirror, monkeypatch):
+    monkeypatch.setattr(_checksums, "RECENT_SECONDS", 3600)
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert counts.not_in_bucket == []
+    assert not _checksums.NOT_IN_BUCKET_RECORD_PATH.exists()
