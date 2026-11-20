@@ -1,9 +1,9 @@
 """
 Verifying the content of the blob mirror against the S3 bucket.
 
-The blob backup copies with ``s5cmd cp --if-size-differ --if-source-newer``, which compares only sizes
-and times, so a copy of the right size with the wrong content is never replaced. This checks the
-content of every mirrored blob against the ETag of its object in the bucket.
+The blob backup copies with ``s5cmd cp --if-size-differ``, which compares only sizes, so a copy of
+the right size with the wrong content is never replaced. This checks the content of every mirrored
+blob against the ETag of its object in the bucket.
 
 DANDI uploads every blob in parts (``DandiETag`` in dandischema), so its ETag is the MD5 of the MD5s
 of its parts, followed by ``-`` and the number of parts. The parts are 64 MiB, or larger for a file
@@ -34,6 +34,14 @@ import urllib.request
 import xml.etree.ElementTree
 
 from ._globals import BLOBS_HEAD_TO_PARTITION
+from ._not_in_bucket import (
+    GRACE_DAYS,
+    NOT_IN_BUCKET_RECORD_PATH,
+    NotInBucketCounts,
+    NotInBucketRecord,
+    print_summary,
+    reconcile_prefix,
+)
 from ._utils import _deploy_subprocess
 
 _BUCKET = "dandiarchive"
@@ -355,7 +363,7 @@ def verify_object(
         )
         return
 
-    # Without --if-size-differ or --if-source-newer, s5cmd copies over the file whatever it holds.
+    # Without --if-size-differ, s5cmd copies over the file whatever it holds.
     _deploy_subprocess(command=f"s5cmd cp s3://{_BUCKET}/{s3_object.key} {blob_path}", ignore_errors=True)
     try:
         stat = blob_path.stat()
@@ -394,11 +402,11 @@ def _delete_copy(
         blob_path.unlink(missing_ok=True)
         checksum_cache_path(blob_path).unlink(missing_ok=True)
     except OSError as error:
-        print(f"[NOT DELETED] {s3_object.key}: {reason}; could not delete {blob_path} ({error})", flush=True)
+        print(f"[MISMATCH NOT DELETED] {s3_object.key}: {reason}; could not delete {blob_path} ({error})", flush=True)
         ledger.record("delete-failed", s3_object.key, blob_path, observed=f"error: {error}", expected=expected)
         return
     counts.deleted.append(s3_object.key)
-    print(f"[DELETED] {s3_object.key}: {reason}; the next blob backup copies it again", flush=True)
+    print(f"[MISMATCH DELETED] {s3_object.key}: {reason}; the next blob backup copies it again", flush=True)
     ledger.record("deleted", s3_object.key, blob_path, observed=observed, expected=expected)
 
 
@@ -407,6 +415,8 @@ def verify_dandi_blob_checksums(
     rehash_older_than_days: float | None = None,
     repair: bool = False,
     ledger_path: pathlib.Path | None = None,
+    not_in_bucket_grace_days: float = GRACE_DAYS,
+    not_in_bucket_record_path: pathlib.Path | None = None,
 ) -> VerificationCounts:
     """
     Verify the mirrored blobs of one top-level hash head against their ETags in the bucket.
@@ -425,6 +435,11 @@ def verify_dandi_blob_checksums(
     ledger_path : pathlib.Path, optional
         The ledger each mismatch, and what became of it, is recorded in (see ``Ledger``). Defaults to
         ``LEDGER_PATH``.
+    not_in_bucket_grace_days : float, default 183
+        How long a mirrored blob that is no longer in the bucket is kept from when it was first found
+        missing, before it is deleted from the mirror (see ``_not_in_bucket``).
+    not_in_bucket_record_path : pathlib.Path, optional
+        The record of those blobs (see ``NotInBucketRecord``). Defaults to ``NOT_IN_BUCKET_RECORD_PATH``.
     """
     blobs_directory = _MIRROR_ROOT / BLOBS_HEAD_TO_PARTITION[task_id] / "s3dandiarchive" / "blobs"
     head = f"{task_id:01x}"
@@ -432,6 +447,8 @@ def verify_dandi_blob_checksums(
     if rehash_older_than_days is not None:
         oldest_trusted = time.time() - rehash_older_than_days * 24 * 3600
     ledger = Ledger(path=ledger_path or LEDGER_PATH)
+    not_in_bucket_record = NotInBucketRecord(path=not_in_bucket_record_path or NOT_IN_BUCKET_RECORD_PATH)
+    not_in_bucket = NotInBucketCounts()
 
     print(f"Verifying head {head} in {blobs_directory} against s3://{_BUCKET}/blobs/{head}*", flush=True)
     counts = VerificationCounts()
@@ -454,7 +471,17 @@ def verify_dandi_blob_checksums(
                 verify_object(
                     s3_object, blob_path, oldest_trusted=oldest_trusted, repair=repair, counts=counts, ledger=ledger
                 )
-            counts.not_in_bucket.extend(sorted(local_blob_paths))
+            kept_before = len(not_in_bucket.kept)
+            reconcile_prefix(
+                key_prefix=f"blobs/{prefix}/",
+                bucket_keys={s3_object.key for s3_object in s3_objects},
+                unmatched_paths=local_blob_paths,
+                record=not_in_bucket_record,
+                counts=not_in_bucket,
+                grace_days=not_in_bucket_grace_days,
+                recent_seconds=RECENT_SECONDS,
+            )
+            counts.not_in_bucket.extend(not_in_bucket.kept[kept_before:])
 
         print(
             f"{datetime.datetime.now():%Y-%m-%d %H:%M:%S} through {head}{second:01x}f: {counts.verified} match, "
@@ -475,10 +502,7 @@ def verify_dandi_blob_checksums(
         + (f": {' '.join(counts.unlisted_prefixes)}" if counts.unlisted_prefixes else "")
         + f"\n  {counts.hashed} files were read in this run, {counts.reused} checked from their cached checksum"
     )
-    for key in counts.not_in_bucket[:_NOT_IN_BUCKET_SHOWN]:
-        print(f"  [NOT IN BUCKET] {key}")
-    if len(counts.not_in_bucket) > _NOT_IN_BUCKET_SHOWN:
-        print(f"  [NOT IN BUCKET] ... and {len(counts.not_in_bucket) - _NOT_IN_BUCKET_SHOWN} more")
+    print_summary(not_in_bucket, not_in_bucket_record, not_in_bucket_grace_days, shown=_NOT_IN_BUCKET_SHOWN)
     if ledger.recorded:
         print(f"\n{ledger.recorded} new events recorded in the ledger {ledger.path}")
     if counts.mismatched:

@@ -22,6 +22,10 @@ Added `s3backup dandi verify-checksums <task_id> [--repair] [--rehash-older-than
 
 `s3backup dandi verify-checksums` deletes a mirrored blob that does not match the bucket, with its cached checksum, so that the next blob backup copies it afresh, records `deleted` (or `delete-failed`) in the ledger, and exits 3 when it did, for DANDI Compute's Check backup workflow to report it as a checksum mismatch. The blob backup never replaced a copy of the right size with the wrong content. `--repair` still copies it again at once instead.
 
+`s3backup dandi verify-checksums` now deletes a mirrored blob once it has been missing from the bucket for 183 days (about 6 months), recording when each was first found missing, and what became of it, in `/orcd/data/dandi/001/backup/not_in_bucket.tsv`; a blob back in the bucket is forgotten. It also removes the partial downloads (`{blob_id}{random digits}`) that a blob backup task killed by SLURM leaves behind, once they have not changed for a day, instead of reporting them as not in the bucket. Nothing is deleted under a prefix whose listing failed.
+
 ## Fixes
+
+The blob backup copies with `s5cmd cp --if-size-differ` alone, without `--if-source-newer`. s5cmd lets the last of these conditions decide, so the local copy, always newer than its object in the bucket, was never copied again, even when truncated. Blobs never change once uploaded, so a size that differs is enough to copy one again.
 
 The blob backup and verify jobs turn on `set -u` only after `module load` and `conda activate`. With it first, the cluster's module scripts stopped every task within a second on the unset `MODULEPATH`, so no blob was backed up from 2026-06-25 until this fix.

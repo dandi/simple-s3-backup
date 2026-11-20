@@ -72,9 +72,10 @@ complete copy, so no data is lost; anything not yet fully copied is reported and
 
 # Verifying the content of the blob mirror
 
-The blob backup copies with `s5cmd cp --if-size-differ --if-source-newer`, which compares only sizes and
-times: a copy of the right size with the wrong content is never replaced. `verify-checksums` compares the
-content of every mirrored blob with its object in the bucket, one head (first hex digit) at a time:
+The blob backup copies with `s5cmd cp --if-size-differ`, which compares only sizes (blobs never change
+once uploaded, so a truncated copy is copied again): a copy of the right size with the wrong content is
+never replaced. `verify-checksums` compares the content of every mirrored blob with its object in the
+bucket, one head (first hex digit) at a time:
 
 ```bash
 s3backup dandi verify-checksums <task_id>                   # 0-15, as for `s3backup dandi blobs`
@@ -103,7 +104,7 @@ A file changed in the last hour may still be being written by the backup, so it 
 The command also reports the blobs not mirrored yet and those mirrored but no longer in the bucket. It
 exits 1 when part of the bucket could not be listed or a copy that does not match could be neither deleted
 nor repaired, otherwise 3 when it deleted a copy that does not match (DANDI Compute's Check backup workflow
-reports that exit code as a checksum mismatch, with the blobs named in the log's `[DELETED]` lines), and
+reports that exit code as a checksum mismatch, with the blobs named in the log's `[MISMATCH DELETED]` lines), and
 otherwise 0.
 
 Every mismatch is also recorded for good in the ledger `/orcd/data/dandi/001/backup/checksum_mismatches.tsv`,
@@ -121,3 +122,17 @@ pruned; DANDI Compute's runner publishes it to the `checksum-mismatches` branch 
 the whole mirror, which takes longer than the 12-hour limit, but a task that times out or is preempted
 keeps what it has cached and the next day's run carries on from there. A task that finds the previous
 day's task for its head still running leaves the head to it.
+
+## Blobs no longer in the bucket
+
+Mirrored files missing from a fully listed prefix are handled in one of two ways:
+
+- **Partial downloads** (a blob's UUID followed by 1-10 digits) are temporary files that s5cmd leaves
+  behind when SLURM kills a backup task. They are removed once unchanged for a day.
+- **Blobs deleted from the archive** are kept for 183 days (about 6 months) from when they were first
+  found missing, then deleted with their cached checksum. A blob back in the bucket before then is
+  forgotten.
+
+The record of the latter is `/orcd/data/dandi/001/backup/not_in_bucket.tsv` (`time`, `event`, `key`,
+`path`, `job`; events `missing`, `reappeared`, `deleted`, `gone`), published to the `not-in-bucket` branch of
+[DANDI Compute's global logs](https://github.com/dandi-compute/dandi-compute-global-logs/blob/not-in-bucket/not-in-bucket.tsv).

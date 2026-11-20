@@ -19,7 +19,7 @@
 #
 # A copy that does not match the bucket is deleted, with its cached checksum, and the next blob
 # backup copies it afresh, as it copies any blob that is missing. The task then exits 3, which the runner's Check backup workflow reports as a checksum
-# mismatch, naming each blob from the `[DELETED]` lines of this log. It exits 1 when part of the
+# mismatch, naming each blob from the `[MISMATCH DELETED]` lines of this log. It exits 1 when part of the
 # bucket could not be listed or a copy could not be deleted. To copy the blobs again at once instead:
 #     s3backup dandi verify-checksums <task_id> --repair
 #
@@ -50,7 +50,7 @@ s3backup dandi verify-checksums "${task_id}"
 status=$?
 
 if [ "${status}" -eq 3 ]; then
-    echo "$(date --iso-8601=seconds) task ${task_id}: deleted the copies that do not match the bucket, named in the [DELETED] lines above; the next blob backup copies them again." >&2
+    echo "$(date --iso-8601=seconds) task ${task_id}: deleted the copies that do not match the bucket, named in the [MISMATCH DELETED] lines above; the next blob backup copies them again." >&2
 elif [ "${status}" -ne 0 ]; then
     echo "$(date --iso-8601=seconds) ERROR task ${task_id}: 's3backup dandi verify-checksums ${task_id}' exited with status ${status}; the summary above names each blob that does not match." >&2
 else
