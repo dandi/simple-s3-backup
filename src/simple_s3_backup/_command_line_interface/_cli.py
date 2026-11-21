@@ -1,3 +1,6 @@
+import os
+import signal
+
 import click
 
 from .._base import (
@@ -10,6 +13,7 @@ from .._base import (
     verify_dandi_blob_checksums,
     verify_dandi_blobs,
 )
+from .._base._checksums import REHASH_DAYS
 
 
 # s3backup
@@ -92,12 +96,13 @@ _CHECKSUM_MISMATCH_EXIT_CODE = 3
     "--rehash-older-than",
     "rehash_older_than_days",
     type=click.FloatRange(min=0),
-    default=None,
+    default=REHASH_DAYS,
+    show_default=True,
     metavar="DAYS",
     help=(
-        "Read a file again when its checksum was cached more than DAYS days ago, even if the file has not "
-        "changed since; 0 reads every file again. By default a cached checksum is trusted while the file keeps "
-        "the modification time it had."
+        "Read a file again when its checksum was computed DAYS days ago or more, even if the file has not "
+        "changed since; 0 reads every file again. A file changed since its checksum was computed is always "
+        "read again."
     ),
 )
 @click.option(
@@ -110,20 +115,26 @@ _CHECKSUM_MISMATCH_EXIT_CODE = 3
     ),
 )
 def _s3backup_dandi_verify_checksums(
-    task_id: int, rehash_older_than_days: float | None = None, repair: bool = False
+    task_id: int, rehash_older_than_days: float = REHASH_DAYS, repair: bool = False
 ) -> None:
     """
     Verify the content of the mirrored blobs whose ID starts with hex digit `task_id` against the bucket.
 
     Each blob's ETag is computed as DANDI uploads it and compared with the ETag of its object in the bucket.
-    The ETag is cached beside the blob in `.{blob_id}.checksum`. Each mismatch, and what became of it, is
+    The ETag is cached beside the blob in `.{blob_id}.checksum`, with when it was computed; the blob is read
+    again once that is --rehash-older-than days ago, or as soon as it changes. The blobs never read, or changed
+    since, are read first, then the overdue ones, oldest first. Each mismatch, and what became of it, is
     recorded in the ledger /orcd/data/dandi/001/backup/checksum_mismatches.tsv. A copy that does not match is
     deleted, with its cached checksum, for the next blob backup to copy afresh (or copied again with --repair).
 
     Exits 1 if part of the bucket could not be listed or a copy that does not match could be neither deleted
-    nor repaired, otherwise 3 if a copy that does not match was deleted, otherwise 0.
+    nor repaired, otherwise 3 if a copy that does not match was deleted, otherwise 0. Stopped by a SIGTERM
+    (as SLURM stops a task at its time limit or on preemption), it prints its summary, then dies of that signal.
     """
     counts = verify_dandi_blob_checksums(task_id=task_id, rehash_older_than_days=rehash_older_than_days, repair=repair)
+    if counts.stopped_by is not None:
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        os.kill(os.getpid(), signal.SIGTERM)
     if counts.unrepaired or counts.unlisted_prefixes:
         raise SystemExit(1)
     if counts.deleted:

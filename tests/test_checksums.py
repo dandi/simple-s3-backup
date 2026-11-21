@@ -1,6 +1,9 @@
 import datetime
 import hashlib
+import os
 import pathlib
+import signal
+import time
 
 import pytest
 from click.testing import CliRunner
@@ -91,19 +94,22 @@ def test_verify(mirror, capsys):
     counts = _checksums.verify_dandi_blob_checksums(task_id=0)
     assert counts.verified == 1
     assert counts.hashed == 2
+    # A copy of the wrong size needs no reading, so it is found while the head is listed, before those read.
     assert [mismatch.split(":")[0] for mismatch in counts.mismatched] == [
-        "blobs/012/345/01234567-corrupt",
         "blobs/0ab/cde/0abcdef0-short",
+        "blobs/012/345/01234567-corrupt",
     ]
-    assert counts.deleted == ["blobs/012/345/01234567-corrupt", "blobs/0ab/cde/0abcdef0-short"]
+    assert counts.deleted == ["blobs/0ab/cde/0abcdef0-short", "blobs/012/345/01234567-corrupt"]
     assert counts.unrepaired == 0
     assert counts.not_mirrored == 1
     assert counts.not_in_bucket == ["blobs/0ab/cde/0abcdef0-deleted"]
 
-    # The cache holds the ETag alone, stamped with the blob's modification time.
+    # The cache holds the ETag and when it was computed, and has the blob's modification time.
     good = blobs_directory / "012/345/01234567-good"
     cache_path = _checksums.checksum_cache_path(good)
-    assert cache_path.read_text() == _etag_of_parts(b"the right content") + "\n"
+    etag, computed = cache_path.read_text().split()
+    assert etag == _etag_of_parts(b"the right content")
+    assert abs(datetime.datetime.fromisoformat(computed).timestamp() - time.time()) < 60
     assert cache_path.stat().st_mtime_ns == good.stat().st_mtime_ns
 
     # The second run trusts the cache, until the file changes or the cache is older than allowed. The copies
@@ -122,6 +128,207 @@ def test_verify(mirror, capsys):
     assert "[MISMATCH] blobs/012/345/01234567-corrupt" in capsys.readouterr().out
 
 
+def _date_cache(blob_path: pathlib.Path, days_ago: float | None) -> None:
+    """Rewrite the blob's cache as if its checksum was computed ``days_ago``, or without a date if None."""
+    cache_path = _checksums.checksum_cache_path(blob_path)
+    etag = cache_path.read_text().split()[0]
+    stat = blob_path.stat()
+    if days_ago is None:
+        cache_path.write_text(f"{etag}\n")
+        os.utime(cache_path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    else:
+        _checksums._write_cache(blob_path, stat, etag, computed=time.time() - days_ago * DAY)
+
+
+def _cached_date(blob_path: pathlib.Path) -> float:
+    return datetime.datetime.fromisoformat(_checksums.checksum_cache_path(blob_path).read_text().split()[1]).timestamp()
+
+
+def test_cache_holds_the_etag_and_when_it_was_computed(tmp_path):
+    blob = tmp_path / "blob"
+    blob.write_bytes(b"content")
+    stat = blob.stat()
+    etag = _etag_of_parts(b"content")
+    cache_path = _checksums.checksum_cache_path(blob)
+
+    _checksums._write_cache(blob, stat, etag, computed=1_790_000_000.0)
+    assert cache_path.read_text() == f"{etag} 2026-09-21T14:13:20+00:00\n"
+    assert _checksums._read_cache(blob, stat) == _checksums.CachedChecksum(etag=etag, computed=1_790_000_000.0)
+
+    # Written before the date was stored: the ETag alone, still read.
+    cache_path.write_text(f"{etag}\n")
+    os.utime(cache_path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    assert _checksums._read_cache(blob, stat) == _checksums.CachedChecksum(etag=etag, computed=None)
+
+    # Anything else is no cache at all, and so is one whose modification time is not the blob's.
+    for text in (f"{etag} yesterday\n", f"{etag} 2026-09-21T12:53:20\n", f"{etag} 2026-09-21T12:53:20+00:00 more\n"):
+        cache_path.write_text(text)
+        os.utime(cache_path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        assert _checksums._read_cache(blob, stat) is None
+    _checksums._write_cache(blob, stat, etag)
+    os.utime(cache_path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1))
+    assert _checksums._read_cache(blob, stat) is None
+
+
+def test_cache_without_a_date_is_dated_today_without_reading_the_blob(mirror, monkeypatch):
+    blobs_directory, _ = mirror
+    _checksums.verify_dandi_blob_checksums(task_id=0)
+    good = blobs_directory / "012/345/01234567-good"
+    _date_cache(good, days_ago=None)
+
+    compute_etag = _checksums.compute_etag
+
+    def must_not_read(file_path, multipart=True):
+        raise AssertionError(f"{file_path} was read")
+
+    monkeypatch.setattr(_checksums, "compute_etag", must_not_read)
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert (counts.hashed, counts.reused, counts.verified, counts.stamped, counts.overdue) == (0, 1, 1, 1, 0)
+    assert abs(_cached_date(good) - time.time()) < 60
+    assert _checksums.checksum_cache_path(good).stat().st_mtime_ns == good.stat().st_mtime_ns
+
+    # Dated once only.
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert (counts.hashed, counts.reused, counts.stamped) == (0, 1, 0)
+
+    # Unless every blob is to be read again anyway.
+    _date_cache(good, days_ago=None)
+    monkeypatch.setattr(_checksums, "compute_etag", compute_etag)
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0, rehash_older_than_days=0)
+    assert (counts.hashed, counts.reused, counts.stamped) == (1, 0, 0)
+
+
+def test_blob_is_read_again_once_its_checksum_is_30_days_old(mirror, capsys):
+    blobs_directory, _ = mirror
+    _checksums.verify_dandi_blob_checksums(task_id=0)
+    good = blobs_directory / "012/345/01234567-good"
+
+    _date_cache(good, days_ago=29)
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert (counts.hashed, counts.reused, counts.overdue) == (0, 1, 0)
+
+    _date_cache(good, days_ago=31)
+    capsys.readouterr()
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert (counts.hashed, counts.reused, counts.verified) == (1, 0, 1)
+    assert (counts.overdue, counts.overdue_bytes, counts.overdue_read, counts.still_overdue) == (1, 17, 1, 0)
+    assert counts.bytes_read == 17
+    assert abs(_cached_date(good) - time.time()) < 60
+    out = capsys.readouterr().out
+    assert "17 B read in " in out
+    assert "1 blobs (17 B) were overdue, their checksum computed 30 days ago or more, the oldest computed " in out
+    assert "1 were read again and 0 are still overdue" in out
+    assert "Reading all 17 B mirrored under this head once every 30 days takes 0.0 MB/s around the clock" in out
+
+    # The interval can be changed.
+    _date_cache(good, days_ago=31)
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0, rehash_older_than_days=60)
+    assert (counts.hashed, counts.reused) == (0, 1)
+
+
+def test_damage_that_keeps_the_modification_time_is_found_once_the_checksum_is_due(mirror):
+    """As after a write followed by `touch -d`, `cp -p` or `rsync -a`, or damage below the filesystem."""
+    blobs_directory, _ = mirror
+    _checksums.verify_dandi_blob_checksums(task_id=0)
+    good = blobs_directory / "012/345/01234567-good"
+    stat = good.stat()
+    good.write_bytes(b"the wrong content")
+    os.utime(good, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert not counts.mismatched
+
+    _date_cache(good, days_ago=30)
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert counts.deleted == ["blobs/012/345/01234567-good"]
+
+
+def test_changed_blob_is_read_again_at_once(mirror):
+    blobs_directory, _ = mirror
+    _checksums.verify_dandi_blob_checksums(task_id=0)
+    good = blobs_directory / "012/345/01234567-good"
+    _date_cache(good, days_ago=1)
+    os.utime(good, (good.stat().st_atime, good.stat().st_mtime - 10))
+
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert (counts.hashed, counts.reused, counts.unread, counts.overdue, counts.verified) == (1, 0, 1, 0, 1)
+
+
+def test_blobs_are_read_never_read_first_then_oldest_checksum_first(tmp_path, monkeypatch):
+    monkeypatch.setattr(_checksums, "_MIRROR_ROOT", tmp_path)
+    monkeypatch.setattr(_checksums, "LEDGER_PATH", tmp_path / "checksum_mismatches.tsv")
+    monkeypatch.setattr(_checksums, "NOT_IN_BUCKET_RECORD_PATH", tmp_path / "not_in_bucket.tsv")
+    monkeypatch.setattr(_checksums, "RECENT_SECONDS", 0)
+    blobs_directory = tmp_path / "001" / "s3dandiarchive" / "blobs"
+    # Listed in this order; the never read one last, and the oldest checksum after a newer one.
+    days_ago = {
+        "000/000/0000-fresh": 1,
+        "001/000/0010-40-days": 40,
+        "0fe/000/0fe0-60-days": 60,
+        "0ff/000/0ff0-new": None,
+    }
+    listing = []
+    for name in days_ago:
+        path = blobs_directory / name
+        path.parent.mkdir(parents=True)
+        path.write_bytes(name.encode())
+        listing.append(_checksums.S3Object(f"blobs/{name}", len(name), _etag_of_parts(name.encode())))
+        if days_ago[name] is not None:
+            _checksums._write_cache(
+                path, path.stat(), _etag_of_parts(name.encode()), time.time() - days_ago[name] * DAY
+            )
+    monkeypatch.setattr(
+        _checksums, "list_s3_objects", lambda prefix: [item for item in listing if item.key.startswith(prefix)]
+    )
+    read = []
+    compute_etag = _checksums.compute_etag
+
+    def record_reads(file_path, multipart=True):
+        read.append(file_path.name)
+        return compute_etag(file_path, multipart=multipart)
+
+    monkeypatch.setattr(_checksums, "compute_etag", record_reads)
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert read == ["0ff0-new", "0fe0-60-days", "0010-40-days"]
+    assert (counts.verified, counts.reused, counts.unread, counts.overdue, counts.overdue_read) == (4, 1, 1, 2, 2)
+    assert counts.oldest_overdue == pytest.approx(time.time() - 60 * DAY, abs=60)
+
+
+def test_sigterm_stops_the_run_with_its_summary(mirror, monkeypatch, capsys):
+    blobs_directory, _ = mirror
+    _checksums.verify_dandi_blob_checksums(task_id=0)
+    _date_cache(blobs_directory / "012/345/01234567-good", days_ago=31)
+    compute_etag = _checksums.compute_etag
+
+    def terminated_while_reading(file_path, multipart=True):
+        os.kill(os.getpid(), signal.SIGTERM)
+        return compute_etag(file_path, multipart=multipart)
+
+    monkeypatch.setattr(_checksums, "compute_etag", terminated_while_reading)
+    handler = signal.getsignal(signal.SIGTERM)
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0)
+    assert counts.stopped_by == "SIGTERM"
+    assert (counts.hashed, counts.overdue, counts.still_overdue) == (0, 1, 1)
+    assert signal.getsignal(signal.SIGTERM) is handler
+    out = capsys.readouterr().out
+    assert ", stopped by SIGTERM before it was done:" in out
+    assert "0 were read again and 1 are still overdue" in out
+    # The cache it was reading for is left as it was.
+    assert _cached_date(blobs_directory / "012/345/01234567-good") < time.time() - 30 * DAY
+
+
+def test_cli_reads_again_every_30_days_by_default(mirror, monkeypatch):
+    received = {}
+    monkeypatch.setattr(
+        "simple_s3_backup._command_line_interface._cli.verify_dandi_blob_checksums",
+        lambda **kwargs: received.update(kwargs) or _checksums.VerificationCounts(),
+    )
+    assert CliRunner().invoke(_s3backup, ["dandi", "verify-checksums", "0"]).exit_code == 0
+    assert received["rehash_older_than_days"] == 30
+    assert CliRunner().invoke(_s3backup, ["dandi", "verify-checksums", "0", "--rehash-older-than", "90"]).exit_code == 0
+    assert received["rehash_older_than_days"] == 90
+
+
 def _ledger_events() -> list[tuple[str, str, str, str]]:
     """The ledger's lines after its header, as (event, key, observed, expected)."""
     lines = _checksums.LEDGER_PATH.read_text().splitlines()
@@ -134,10 +341,10 @@ def test_ledger(mirror):
     corrupt_etag = _etag_of_parts(b"the wrong content")
     right_etag = _etag_of_parts(b"the right content")
     found = [
-        ("etag-mismatch", "blobs/012/345/01234567-corrupt", corrupt_etag, right_etag),
-        ("deleted", "blobs/012/345/01234567-corrupt", corrupt_etag, right_etag),
         ("size-mismatch", "blobs/0ab/cde/0abcdef0-short", "9", "17"),
         ("deleted", "blobs/0ab/cde/0abcdef0-short", "9", "17"),
+        ("etag-mismatch", "blobs/012/345/01234567-corrupt", corrupt_etag, right_etag),
+        ("deleted", "blobs/012/345/01234567-corrupt", corrupt_etag, right_etag),
     ]
 
     _checksums.verify_dandi_blob_checksums(task_id=0)
@@ -160,7 +367,7 @@ def test_ledger(mirror):
     short = blobs_directory / "0ab/cde/0abcdef0-short"
     short.write_bytes(b"the right")
     _checksums.verify_dandi_blob_checksums(task_id=0)
-    assert _ledger_events() == [*found, *resolved, *found[2:]]
+    assert _ledger_events() == [*found, *resolved, *found[:2]]
     assert not short.exists()
 
 
@@ -186,7 +393,7 @@ def test_verify_repairs(mirror, monkeypatch):
 
     monkeypatch.setattr(_checksums, "_deploy_subprocess", copy_from_bucket)
     counts = _checksums.verify_dandi_blob_checksums(task_id=0, repair=True)
-    assert counts.repaired == ["blobs/012/345/01234567-corrupt", "blobs/0ab/cde/0abcdef0-short"]
+    assert counts.repaired == ["blobs/0ab/cde/0abcdef0-short", "blobs/012/345/01234567-corrupt"]
     assert counts.unrepaired == 0
 
     counts = _checksums.verify_dandi_blob_checksums(task_id=0)
@@ -194,10 +401,10 @@ def test_verify_repairs(mirror, monkeypatch):
     assert not counts.mismatched
 
     assert [event[:2] for event in _ledger_events()] == [
-        ("etag-mismatch", "blobs/012/345/01234567-corrupt"),
-        ("repaired", "blobs/012/345/01234567-corrupt"),
         ("size-mismatch", "blobs/0ab/cde/0abcdef0-short"),
         ("repaired", "blobs/0ab/cde/0abcdef0-short"),
+        ("etag-mismatch", "blobs/012/345/01234567-corrupt"),
+        ("repaired", "blobs/012/345/01234567-corrupt"),
     ]
 
 
@@ -233,7 +440,7 @@ def test_deletes_copies_that_do_not_match(mirror, capsys):
     _checksums.checksum_cache_path(short).write_text(_etag_of_parts(b"earlier") + "\n")
 
     counts = _checksums.verify_dandi_blob_checksums(task_id=0)
-    assert counts.deleted == ["blobs/012/345/01234567-corrupt", "blobs/0ab/cde/0abcdef0-short"]
+    assert counts.deleted == ["blobs/0ab/cde/0abcdef0-short", "blobs/012/345/01234567-corrupt"]
     for path in (corrupt, short):
         assert not path.exists()
         assert not _checksums.checksum_cache_path(path).exists()
@@ -269,13 +476,13 @@ def test_deletes_copies_already_unresolved_in_ledger(mirror):
     _checksums.LEDGER_PATH.write_text("\n".join(lines) + "\n")
 
     counts = _checksums.verify_dandi_blob_checksums(task_id=0)
-    assert counts.deleted == ["blobs/012/345/01234567-corrupt", "blobs/0ab/cde/0abcdef0-short"]
+    assert counts.deleted == ["blobs/0ab/cde/0abcdef0-short", "blobs/012/345/01234567-corrupt"]
     assert not (blobs_directory / "012/345/01234567-corrupt").exists()
     assert not (blobs_directory / "0ab/cde/0abcdef0-short").exists()
     assert _ledger_events() == [
         *recorded,
-        ("deleted", "blobs/012/345/01234567-corrupt", corrupt_etag, right_etag),
         ("deleted", "blobs/0ab/cde/0abcdef0-short", "9", "17"),
+        ("deleted", "blobs/012/345/01234567-corrupt", corrupt_etag, right_etag),
     ]
 
 
