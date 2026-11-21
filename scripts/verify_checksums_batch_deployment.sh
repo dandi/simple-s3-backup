@@ -14,12 +14,12 @@
 # content ID, as the blob backup copies it (see `s3backup dandi verify-checksums --help`). Each blob's
 # checksum is cached beside it, with the date it was computed, so a task that times out or is preempted
 # loses nothing: the next run reads only what is left. The first run reads the whole mirror and takes
-# several. Later ones read the blobs copied or changed since, and those whose checksum is 30 days old
+# several. Later ones read the blobs copied or changed since, and those whose checksum is 90 days old
 # (the CLI's default for --rehash-older-than, so it is not passed here), to catch damage that leaves the
 # modification time alone: blobs never read first, then the longest-unread. At most 4 tasks run at once,
 # so as not to take the partitions' whole read bandwidth from the jobs that use them.
 #
-# Reading the whole mirror (about 1.34 PB) every 30 days is about 520 MB/s around the clock. Each task's
+# Reading the whole mirror (about 1.34 PB) every 90 days is about 170 MB/s around the clock. Each task's
 # summary, printed also when SLURM stops it at the time limit, gives its read rate and how many blobs
 # are still overdue; if that number keeps growing from one run to the next, this job does not keep up.
 #

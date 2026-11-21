@@ -72,7 +72,7 @@ _NOT_IN_BUCKET_SHOWN = 20
 _ETAG_PATTERN = re.compile(r"[0-9a-f]{32}(-[0-9]+)?")
 
 #: How many days a cached checksum is trusted, from when it was computed, before the blob is read again.
-REHASH_DAYS = 30.0
+REHASH_DAYS = 90.0
 
 #: How often, in seconds, a run reports how far it has got in reading the blobs.
 _PROGRESS_SECONDS = 600
@@ -736,7 +736,7 @@ def verify_dandi_blob_checksums(
     ----------
     task_id : int
         The head, 0 to 15, as for ``s3backup dandi blobs``: the blobs whose ID starts with that hex digit.
-    rehash_older_than_days : float or None, default 30
+    rehash_older_than_days : float or None, default 90
         Read a file again when its checksum was computed this many days ago or more, even if the file has not
         changed since. 0 reads every file again. None trusts a cached checksum for as long as the file keeps
         the modification time it had.

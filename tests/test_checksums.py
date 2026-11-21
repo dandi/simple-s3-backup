@@ -198,16 +198,16 @@ def test_cache_without_a_date_is_dated_today_without_reading_the_blob(mirror, mo
     assert (counts.hashed, counts.reused, counts.stamped) == (1, 0, 0)
 
 
-def test_blob_is_read_again_once_its_checksum_is_30_days_old(mirror, capsys):
+def test_blob_is_read_again_once_its_checksum_is_90_days_old(mirror, capsys):
     blobs_directory, _ = mirror
     _checksums.verify_dandi_blob_checksums(task_id=0)
     good = blobs_directory / "012/345/01234567-good"
 
-    _date_cache(good, days_ago=29)
+    _date_cache(good, days_ago=89)
     counts = _checksums.verify_dandi_blob_checksums(task_id=0)
     assert (counts.hashed, counts.reused, counts.overdue) == (0, 1, 0)
 
-    _date_cache(good, days_ago=31)
+    _date_cache(good, days_ago=91)
     capsys.readouterr()
     counts = _checksums.verify_dandi_blob_checksums(task_id=0)
     assert (counts.hashed, counts.reused, counts.verified) == (1, 0, 1)
@@ -216,13 +216,13 @@ def test_blob_is_read_again_once_its_checksum_is_30_days_old(mirror, capsys):
     assert abs(_cached_date(good) - time.time()) < 60
     out = capsys.readouterr().out
     assert "17 B read in " in out
-    assert "1 blobs (17 B) were overdue, their checksum computed 30 days ago or more, the oldest computed " in out
+    assert "1 blobs (17 B) were overdue, their checksum computed 90 days ago or more, the oldest computed " in out
     assert "1 were read again and 0 are still overdue" in out
-    assert "Reading all 17 B mirrored under this head once every 30 days takes 0.0 MB/s around the clock" in out
+    assert "Reading all 17 B mirrored under this head once every 90 days takes 0.0 MB/s around the clock" in out
 
     # The interval can be changed.
-    _date_cache(good, days_ago=31)
-    counts = _checksums.verify_dandi_blob_checksums(task_id=0, rehash_older_than_days=60)
+    _date_cache(good, days_ago=91)
+    counts = _checksums.verify_dandi_blob_checksums(task_id=0, rehash_older_than_days=120)
     assert (counts.hashed, counts.reused) == (0, 1)
 
 
@@ -238,7 +238,7 @@ def test_damage_that_keeps_the_modification_time_is_found_once_the_checksum_is_d
     counts = _checksums.verify_dandi_blob_checksums(task_id=0)
     assert not counts.mismatched
 
-    _date_cache(good, days_ago=30)
+    _date_cache(good, days_ago=90)
     counts = _checksums.verify_dandi_blob_checksums(task_id=0)
     assert counts.deleted == ["blobs/012/345/01234567-good"]
 
@@ -263,8 +263,8 @@ def test_blobs_are_read_never_read_first_then_oldest_checksum_first(tmp_path, mo
     # Listed in this order; the never read one last, and the oldest checksum after a newer one.
     days_ago = {
         "000/000/0000-fresh": 1,
-        "001/000/0010-40-days": 40,
-        "0fe/000/0fe0-60-days": 60,
+        "001/000/0010-100-days": 100,
+        "0fe/000/0fe0-120-days": 120,
         "0ff/000/0ff0-new": None,
     }
     listing = []
@@ -289,15 +289,15 @@ def test_blobs_are_read_never_read_first_then_oldest_checksum_first(tmp_path, mo
 
     monkeypatch.setattr(_checksums, "compute_etag", record_reads)
     counts = _checksums.verify_dandi_blob_checksums(task_id=0)
-    assert read == ["0ff0-new", "0fe0-60-days", "0010-40-days"]
+    assert read == ["0ff0-new", "0fe0-120-days", "0010-100-days"]
     assert (counts.verified, counts.reused, counts.unread, counts.overdue, counts.overdue_read) == (4, 1, 1, 2, 2)
-    assert counts.oldest_overdue == pytest.approx(time.time() - 60 * DAY, abs=60)
+    assert counts.oldest_overdue == pytest.approx(time.time() - 120 * DAY, abs=60)
 
 
 def test_sigterm_stops_the_run_with_its_summary(mirror, monkeypatch, capsys):
     blobs_directory, _ = mirror
     _checksums.verify_dandi_blob_checksums(task_id=0)
-    _date_cache(blobs_directory / "012/345/01234567-good", days_ago=31)
+    _date_cache(blobs_directory / "012/345/01234567-good", days_ago=91)
     compute_etag = _checksums.compute_etag
 
     def terminated_while_reading(file_path, multipart=True):
@@ -314,19 +314,19 @@ def test_sigterm_stops_the_run_with_its_summary(mirror, monkeypatch, capsys):
     assert ", stopped by SIGTERM before it was done:" in out
     assert "0 were read again and 1 are still overdue" in out
     # The cache it was reading for is left as it was.
-    assert _cached_date(blobs_directory / "012/345/01234567-good") < time.time() - 30 * DAY
+    assert _cached_date(blobs_directory / "012/345/01234567-good") < time.time() - 90 * DAY
 
 
-def test_cli_reads_again_every_30_days_by_default(mirror, monkeypatch):
+def test_cli_reads_again_every_90_days_by_default(mirror, monkeypatch):
     received = {}
     monkeypatch.setattr(
         "simple_s3_backup._command_line_interface._cli.verify_dandi_blob_checksums",
         lambda **kwargs: received.update(kwargs) or _checksums.VerificationCounts(),
     )
     assert CliRunner().invoke(_s3backup, ["dandi", "verify-checksums", "0"]).exit_code == 0
-    assert received["rehash_older_than_days"] == 30
-    assert CliRunner().invoke(_s3backup, ["dandi", "verify-checksums", "0", "--rehash-older-than", "90"]).exit_code == 0
     assert received["rehash_older_than_days"] == 90
+    assert CliRunner().invoke(_s3backup, ["dandi", "verify-checksums", "0", "--rehash-older-than", "30"]).exit_code == 0
+    assert received["rehash_older_than_days"] == 30
 
 
 def _ledger_events() -> list[tuple[str, str, str, str]]:

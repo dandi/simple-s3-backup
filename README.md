@@ -123,7 +123,7 @@ bucket, one head (first hex digit) at a time:
 ```bash
 s3backup dandi verify-checksums <task_id>                   # 0-15, as for `s3backup dandi blobs`
 s3backup dandi verify-checksums <task_id> --repair          # also copy each blob that does not match again
-s3backup dandi verify-checksums <task_id> --rehash-older-than 60   # re-read every 60 days instead of 30
+s3backup dandi verify-checksums <task_id> --rehash-older-than 30   # re-read every 30 days instead of 90
 ```
 
 It lists the bucket anonymously for each blob's size and ETag. DANDI uploads every blob in parts of
@@ -136,11 +136,11 @@ Computing an ETag reads the whole file, so it is cached beside the blob as `.{bl
 holds the ETag and the date it was computed, in UTC, e.g.
 `0123456789abcdef0123456789abcdef-3 2026-11-21T10:00:00+00:00`. The cache file is given the blob's
 modification time when it is written, so a blob changed since is read again at the next run. A blob that
-keeps its modification time is read again once its checksum is 30 days old (`--rehash-older-than DAYS`
+keeps its modification time is read again once its checksum is 90 days old (`--rehash-older-than DAYS`
 changes that; `0` re-reads everything), which catches what the modification time does not show: damage
 below the filesystem, or a write after which the modification time was restored (`touch -d`, `cp -p`,
 `rsync -a`). A cache written before the date was stored holds the ETag alone. It is taken as computed on
-the day a run first sees it and rewritten with that date, without reading the blob, so these come due 30
+the day a run first sees it and rewritten with that date, without reading the blob, so these come due 90
 days later. Each cache is one more file next to each blob, which doubles the file count of the blob
 directories. The dashboard and `cleanup-misplaced-blobs` skip them.
 
@@ -181,9 +181,9 @@ the whole mirror, which takes longer than the 12-hour limit, but a task that tim
 keeps what it has cached and the next day's run carries on from there. A task that finds the previous
 day's task for its head still running leaves the head to it.
 
-Reading the whole mirror, about 1.34 PB, once every 30 days is about 45 TB a day, or 520 MB/s around the
+Reading the whole mirror, about 1.34 PB, once every 90 days is about 15 TB a day, or 170 MB/s around the
 clock. Whether the job keeps up shows in its summaries: while the number still overdue at the end of each
-task stays near 0, it does; while it grows, the job reads each blob less often than every 30 days, and
+task stays near 0, it does; while it grows, the job reads each blob less often than every 90 days, and
 needs more tasks at once, longer ones, or a longer interval.
 
 ## Blobs no longer in the bucket
