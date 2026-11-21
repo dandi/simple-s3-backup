@@ -720,9 +720,25 @@ def test_backup_dandi_blobs_copies_on_size_alone(monkeypatch):
     from simple_s3_backup._base import _dandi
 
     commands = []
-    monkeypatch.setattr(_dandi, "_deploy_subprocess", lambda command, ignore_errors: commands.append(command))
+    captured = []
+
+    def deploy(command, ignore_errors, capture_output=True):
+        commands.append(command)
+        captured.append(capture_output)
+
+    monkeypatch.setattr(_dandi, "_deploy_subprocess", deploy)
     _dandi.backup_dandi_blobs(task_id=2)
 
     assert len(commands) == 256
     assert all(command.startswith("s5cmd cp --if-size-differ s3://dandiarchive/blobs/2") for command in commands)
     assert not any("--if-source-newer" in command for command in commands)
+    # s5cmd's line for each copied blob goes to the task's log rather than being captured.
+    assert not any(captured)
+
+
+def test_deploy_subprocess_without_capture_writes_output_as_it_goes(capfd):
+    from simple_s3_backup._base._utils import _deploy_subprocess
+
+    assert _deploy_subprocess(command="echo cp s3://dandiarchive/blobs/abc", capture_output=False) is None
+    assert capfd.readouterr().out == "cp s3://dandiarchive/blobs/abc\n"
+    assert _deploy_subprocess(command="exit 1", capture_output=False, ignore_errors=True) is None
