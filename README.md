@@ -123,7 +123,7 @@ bucket, one head (first hex digit) at a time:
 ```bash
 s3backup dandi verify-checksums <task_id>                   # 0-15, as for `s3backup dandi blobs`
 s3backup dandi verify-checksums <task_id> --repair          # also copy each blob that does not match again
-s3backup dandi verify-checksums <task_id> --rehash-older-than 180   # re-read files checked over 180 days ago
+s3backup dandi verify-checksums <task_id> --rehash-older-than 30   # re-read every 30 days instead of 90
 ```
 
 It lists the bucket anonymously for each blob's size and ETag. DANDI uploads every blob in parts of
@@ -133,12 +133,27 @@ A blob whose ETag shows other parts than DANDI's is reported as unverifiable, si
 unknown.
 
 Computing an ETag reads the whole file, so it is cached beside the blob as `.{blob_id}.checksum`, which
-holds the ETag and nothing else. The cache file is given the blob's modification time when it is written,
-so a later run trusts it while the blob keeps that modification time, and only blobs copied or changed
-since are read again. `--rehash-older-than DAYS` re-reads files whose checksum was cached longer ago than
-that (by the cache file's change time), to catch damage on disk that leaves the modification time alone;
-`0` re-reads everything. Each cache is one more file next to each blob, which doubles the file count of the
-blob directories. The dashboard and `cleanup-misplaced-blobs` skip them.
+holds the ETag and the date it was computed, in UTC, e.g.
+`0123456789abcdef0123456789abcdef-3 2026-11-21T10:00:00+00:00`. The cache file is given the blob's
+modification time when it is written, so a blob changed since is read again at the next run. A blob that
+keeps its modification time is read again once its checksum is 90 days old (`--rehash-older-than DAYS`
+changes that; `0` re-reads everything), which catches what the modification time does not show: damage
+below the filesystem, or a write after which the modification time was restored (`touch -d`, `cp -p`,
+`rsync -a`). A cache written before the date was stored holds the ETag alone. It is taken as computed on
+the day a run first sees it and rewritten with that date, without reading the blob, so these come due 90
+days later. Each cache is one more file next to each blob, which doubles the file count of the blob
+directories. The dashboard and `cleanup-misplaced-blobs` skip them.
+
+Each run first lists the whole head, in the bucket and on the mirror, and checks every blob it can without
+reading it: from its cached checksum, or because its size is wrong. Then it reads the others, in this order:
+blobs never read or changed since, then those whose checksum is overdue, oldest first. When there is more to
+read than a run gets through, the overdue ones wait, the longest-unread first, and new blobs are never held
+up behind them; the cycle simply stretches to what the job can read. The run's summary says how much it
+read and how fast (both while reading and over the whole run), how many blobs were never read and how many
+overdue (with their size and the oldest date), how many of these it read and how many are still overdue,
+and how fast the head would need to be read to read all of it once every interval. The same figures, so far,
+are printed every 10 minutes while it reads. A SIGTERM, which SLURM sends at the time limit or on
+preemption, stops the run between two reads or within one; it prints its summary, then dies of that signal.
 
 A copy that does not match is deleted, with its cached checksum. The blob backup copies a missing blob
 whatever its conditions, so the next one copies it afresh.
@@ -165,6 +180,11 @@ pruned; DANDI Compute's runner publishes it to the `checksum-mismatches` branch 
 the whole mirror, which takes longer than the 12-hour limit, but a task that times out or is preempted
 keeps what it has cached and the next day's run carries on from there. A task that finds the previous
 day's task for its head still running leaves the head to it.
+
+Reading the whole mirror, about 1.34 PB, once every 90 days is about 15 TB a day, or 170 MB/s around the
+clock. Whether the job keeps up shows in its summaries: while the number still overdue at the end of each
+task stays near 0, it does; while it grows, the job reads each blob less often than every 90 days, and
+needs more tasks at once, longer ones, or a longer interval.
 
 ## Blobs no longer in the bucket
 
