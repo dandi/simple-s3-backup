@@ -30,6 +30,8 @@ The dashboard lists the bucket's blobs one head at a time with `s5cmd du`, takes
 
 `s3backup dandi verify-blobs` and the dashboard count each head's sub-directories with the same function. `verify-blobs` now also fails when a head is missing from its assigned partition, not only when a whole partition is empty, and runs daily from dandi-compute-runner's `backup.sh verify-blobs` as `DANDI-Verify-Blobs`.
 
+The blob backup writes s5cmd's output to the task's log as it runs, instead of capturing and discarding it, so the log has a `cp s3://dandiarchive/blobs/... <local path>` line for each blob copied, a task killed at its time limit included. DANDI Compute's Check backup workflow counts them to tell whether the mirror is growing, now that the dashboard no longer counts the mirror's blobs, and warns about a blob copied again on several days.
+
 ## Fixes
 
 The blob backup copies with `s5cmd cp --if-size-differ` alone, without `--if-source-newer`. s5cmd lets the last of these conditions decide, so the local copy, always newer than its object in the bucket, was never copied again, even when truncated. Blobs never change once uploaded, so a size that differs is enough to copy one again.
