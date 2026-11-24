@@ -36,6 +36,8 @@ The blob backup writes s5cmd's output to the task's log as it runs, instead of c
 
 ## Fixes
 
+The blob backup's tasks run for up to 48 hours, the most `mit_preemptable` allows, instead of 12. Every task was killed at 12 hours, and s5cmd cannot resume a download, so the blobs a task was still downloading were thrown away and downloaded from zero the next day, and a blob that never fitted in what was left of 12 hours was never mirrored. A task now waits up to 15 minutes for its head's lock, which a task SLURM has just killed may still hold, before it fails. Preemption still restarts a task from its first prefix, losing its downloads in flight.
+
 The blob backup copies with `s5cmd cp --if-size-differ` alone, without `--if-source-newer`. s5cmd lets the last of these conditions decide, so the local copy, always newer than its object in the bucket, was never copied again, even when truncated. Blobs never change once uploaded, so a size that differs is enough to copy one again.
 
 The blob backup and verify jobs turn on `set -u` only after `module load` and `conda activate`. With it first, the cluster's module scripts stopped every task within a second on the unset `MODULEPATH`, so no blob was backed up from 2026-06-25 until this fix.

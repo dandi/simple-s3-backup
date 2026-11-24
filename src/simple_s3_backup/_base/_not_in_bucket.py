@@ -8,8 +8,9 @@ listing, is one of two things:
   the destination's directory, named after the blob with a random number of up to 10 digits appended
   (Go's ``os.CreateTemp``), and renames it into place once the download is complete. It deletes it when
   the download fails, but not when SLURM kills the task, at its time limit or on preemption. Such a file
-  was never in the bucket, so it is removed once it has not changed for ``STALE_DOWNLOAD_SECONDS``: no
-  task of the blob backup runs for longer than 12 hours, and a live download keeps writing to its file.
+  was never in the bucket, so it is removed once it has not changed for ``STALE_DOWNLOAD_SECONDS``. A
+  live download keeps writing to its file, which keeps its change time recent however long the task
+  runs (up to 48 hours): only a file that no download has written to for a whole day is removed.
 - A blob deleted from the archive. It is kept for ``GRACE_DAYS`` from when it was first found missing,
   so the mirror is a delayed backup of whatever DANDI deletes, and deleted then, with its cached
   checksum. When was it first found missing, and what became of it, is recorded in a shared record (see

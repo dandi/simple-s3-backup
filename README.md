@@ -35,11 +35,21 @@ The scripts are run from cron's environment, which sets neither `MODULEPATH` nor
 turns on `set -u` only after `module load` and `conda activate`, since the cluster's module scripts read
 `MODULEPATH` and bash would otherwise stop the job at once.
 
-`verify_blobs_backup_deployment.sh` runs `s3backup dandi verify-blobs` every morning at 11:30, once the
-22:00 blob array's 12 hours are up. It fails, and the Check backup workflow emails its log's tail, when a
-blob head is missing from its assigned partition or misplaced on another one. It only lists the top of each
-partition's `blobs/` directory, never the files. It deletes nothing: see below to fix a misplaced head. It
-can also be run by hand:
+`backup_blobs_batch_deployment.sh` runs each task of the blob array for up to 48 hours, the most
+`mit_preemptable` allows. s5cmd downloads a blob into a temporary file and cannot resume it, so a task killed
+at its time limit throws away the blobs it was still downloading, and the next run downloads them again from
+zero; at 12 hours every task was killed at its limit, and a blob that never fitted in what was left of one
+was never mirrored. Since `backup.sh` submits nothing while a job of the same name is pending or running, an
+array now runs for up to two days, and the next is submitted at the first 22:00 after it ends. A task that
+is preempted is requeued and starts again from its first prefix, also losing the downloads it had in flight,
+which is now the main reason a large blob is downloaded more than once. A task waits up to 15 minutes for
+its head's lock, which a task SLURM has just killed may still hold, and fails if it does not get it.
+
+`verify_blobs_backup_deployment.sh` runs `s3backup dandi verify-blobs` every morning at 11:30. It lists
+directories only, so it can run while the blob array is still copying. It fails, and the Check backup
+workflow emails its log's tail, when a blob head is missing from its assigned partition or misplaced on
+another one. It only lists the top of each partition's `blobs/` directory, never the files. It deletes
+nothing: see below to fix a misplaced head. It can also be run by hand:
 
 ```bash
 s3backup dandi verify-blobs
